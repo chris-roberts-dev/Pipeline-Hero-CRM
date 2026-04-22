@@ -1,0 +1,5 @@
+-r base.txt
+
+# Prod is base + nothing extra yet.
+# Intentionally keep this thin — anything prod-only gets added here explicitly.
+# pgBouncer runs as a separate container, not a Python package.

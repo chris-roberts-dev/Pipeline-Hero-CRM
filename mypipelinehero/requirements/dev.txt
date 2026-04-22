@@ -1,0 +1,15 @@
+-r base.txt
+
+# --- Dev ergonomics ---
+django-debug-toolbar==4.4.6     # In-browser query/template inspection
+django-extensions==3.2.3        # shell_plus, runserver_plus, etc.
+ipython==8.29.0                 # Better REPL for shell_plus
+werkzeug==3.1.3                 # Required by runserver_plus
+
+# --- Lint / format ---
+ruff==0.7.4                     # Linter + formatter (replaces flake8 + black + isort)
+mypy==1.13.0                    # Optional typing; services are worth checking
+django-stubs[compatible-mypy]==5.1.1
+
+# --- Pre-commit hooks ---
+pre-commit==4.0.1

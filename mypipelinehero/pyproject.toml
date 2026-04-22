@@ -1,0 +1,89 @@
+[project]
+name = "mypipelinehero"
+version = "0.1.0"
+description = "MyPipelineHero — multi-tenant CRM and operations platform."
+requires-python = ">=3.13"
+
+# Dependencies are managed via requirements/*.txt (not here) to keep
+# production builds deterministic and separate from dev tooling.
+
+# ---------------------------------------------------------------------------
+# Ruff — linter + formatter (replaces flake8, black, isort)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [
+    "*/migrations/*",
+    "staticfiles",
+    "media",
+    "frontend",
+]
+
+[tool.ruff.lint]
+# A sensible starter set. We can add more as the codebase grows.
+#   E,W   pycodestyle
+#   F     pyflakes
+#   I     isort-style import sorting
+#   B     bugbear
+#   UP    pyupgrade
+#   DJ    django-specific
+#   N     pep8-naming
+select = ["E", "W", "F", "I", "B", "UP", "DJ", "N"]
+ignore = [
+    "E501",   # Line too long — ruff format handles this
+    "DJ001",  # null=True on string fields: we sometimes need it
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+# fail-fast on collection errors; readable output; show slowest 5
+addopts = "-ra --strict-markers --tb=short --durations=5"
+markers = [
+    "slow: tests that are noticeably slower than the norm",
+    "integration: requires a live Postgres + Redis",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["apps", "config"]
+branch = true
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/test_*.py",
+    "config/asgi.py",
+    "config/wsgi.py",
+    "manage.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 1
+
+# ---------------------------------------------------------------------------
+# Mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+plugins = ["mypy_django_plugin.main"]
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+# Start permissive; tighten per-module as services mature.
+ignore_missing_imports = true
+exclude = ["migrations"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.dev"

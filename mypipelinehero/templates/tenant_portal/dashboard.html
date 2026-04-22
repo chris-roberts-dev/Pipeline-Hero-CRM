@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ organization.name }} · MyPipelineHero{% endblock %}
+
+{% block content %}
+<nav class="navbar navbar-expand-lg bg-white border-bottom">
+    <div class="container">
+        <span class="navbar-brand brand">
+            MyPipelineHero · {{ organization.name }}
+        </span>
+        <div class="ms-auto">
+            <span class="text-muted small me-3">{{ request.user.email }}</span>
+            <a href="{% url 'tenant_portal:logout' %}" class="btn btn-sm btn-outline-secondary">Sign out</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-5">
+    <div class="card shadow-sm" style="max-width: 720px; margin: 0 auto;">
+        <div class="card-body p-5 text-center">
+            <h1 class="h3 mb-3">Welcome to {{ organization.name }}</h1>
+            <p class="text-muted">
+                The tenant portal UI lands progressively through Milestones 2–6. You're looking at the
+                Milestone 1 placeholder — the cross-subdomain handoff flow is working end to end.
+            </p>
+            <p class="text-muted small mb-0">
+                Subdomain: <code>{{ organization.slug }}</code>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

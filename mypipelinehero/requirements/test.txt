@@ -1,0 +1,17 @@
+-r base.txt
+
+# --- Test framework ---
+pytest==8.3.3
+pytest-django==4.9.0
+pytest-cov==6.0.0
+pytest-xdist==3.6.1             # Parallel test execution
+
+# --- Fixtures / factories ---
+factory-boy==3.3.1
+faker==30.8.2
+
+# --- Freezing time for state machine / expiry tests ---
+freezegun==1.5.1
+
+# --- Mocking / HTTP ---
+responses==0.25.3               # For mocking outbound HTTP in comms tests

@@ -1,0 +1,28 @@
+# MyPipelineHero CRM - Base Requirements
+# Pinned to known-compatible versions as of 2026-04. Review before each LTS bump.
+# Python 3.13 target.
+
+# --- Django core ---
+Django==5.2.1                   # LTS; supports Python 3.10-3.13
+psycopg[binary]==3.2.3          # PostgreSQL driver (psycopg3, binary wheel)
+
+# --- Config / env ---
+django-environ==0.11.2          # .env-driven settings
+
+# --- Async stack ---
+celery[redis]==5.4.0            # Task queue
+redis==5.2.0                    # Redis client (also used for cache + handoff tokens)
+django-celery-beat==2.9.0       # DB-backed periodic task scheduling (2.9.0 drops the Django<5.2 cap)
+
+# --- Storage (used from M5 onward, but pinned now to avoid churn) ---
+django-storages[s3]==1.14.4     # S3-compatible object storage backend
+
+# --- Server ---
+gunicorn==23.0.0                # WSGI server for prod
+
+# --- Observability ---
+sentry-sdk[django]==2.18.0      # Error monitoring (activated in M6; installed now)
+python-json-logger==2.0.7       # Structured JSON logging
+
+# --- Security / misc ---
+argon2-cffi==23.1.0             # Stronger password hashing than default pbkdf2

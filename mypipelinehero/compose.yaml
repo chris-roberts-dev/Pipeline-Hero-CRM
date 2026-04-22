@@ -1,0 +1,157 @@
+# -----------------------------------------------------------------------------
+# MyPipelineHero — local development stack.
+#
+# Services:
+#   postgres       PostgreSQL 17 with persistent volume
+#   redis          Redis 7 (cache + celery broker + handoff tokens)
+#   migrate        One-shot: runs `manage.py migrate` then exits. All app
+#                  containers wait for this to complete successfully before
+#                  starting, so beat never races against missing tables.
+#   django         Django dev server (runserver) on :8000, bind-mounted source
+#   celery_worker  Celery worker consuming the default queue
+#   celery_beat    Celery beat scheduler (django_celery_beat DB-backed)
+#   nginx          Reverse proxy on :80 with wildcard *.localhost routing
+#
+# Notes:
+#   - No pgBouncer here. It's required in prod (spec §24.3A), optional in dev.
+#   - django depends on postgres being *healthy*, not just running, so the
+#     first-time-up doesn't race the DB.
+#   - Celery containers share the same image as django; only the command
+#     differs. Source is bind-mounted so watch-for-code-changes works for
+#     both web and workers (you'll still need to restart workers — Celery
+#     doesn't auto-reload by default).
+#   - On subsequent `docker compose up`, the migrate service runs again and
+#     is a no-op if no new migrations exist. Safe and idempotent.
+# -----------------------------------------------------------------------------
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mph}
+      POSTGRES_USER: ${POSTGRES_USER:-mph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mph}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Exposed for psql / GUI tools from the host. Remove for prod analog.
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mph} -d ${POSTGRES_DB:-mph}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  migrate:
+    # Runs to completion then exits. Everything else waits on
+    # `service_completed_successfully` so the schema is guaranteed to exist
+    # before the app, workers, or scheduler touch the DB.
+    image: mph-django:dev
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: dev
+    command: python manage.py migrate --noinput
+    volumes:
+      - .:/app:cached
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  django:
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: dev
+    image: mph-django:dev
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app:cached
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  celery_worker:
+    image: mph-django:dev
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: dev
+    command: celery -A config worker --loglevel=info --concurrency=2
+    volumes:
+      - .:/app:cached
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  celery_beat:
+    image: mph-django:dev
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: dev
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app:cached
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    volumes:
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - django
+
+volumes:
+  postgres_data:
+  redis_data:

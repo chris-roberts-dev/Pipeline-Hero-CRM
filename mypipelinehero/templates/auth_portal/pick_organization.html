@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Choose organization · MyPipelineHero{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="card auth-card shadow-sm">
+        <div class="card-body p-4">
+            <h1 class="brand h4 mb-3 text-center">Choose an organization</h1>
+            <p class="text-muted text-center small mb-4">
+                You belong to multiple organizations. Pick one to continue.
+            </p>
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors|first }}</div>
+            {% endif %}
+
+            <div class="d-grid gap-2">
+                {% for membership in memberships %}
+                    <form method="post" action="{% url 'auth_portal:pick_organization' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="organization_id" value="{{ membership.organization.pk }}">
+                        <button type="submit" class="btn btn-outline-primary w-100 text-start">
+                            <strong>{{ membership.organization.name }}</strong>
+                            <span class="text-muted small">— {{ membership.organization.slug }}</span>
+                        </button>
+                    </form>
+                {% empty %}
+                    <p class="text-muted text-center">No active organizations.</p>
+                {% endfor %}
+            </div>
+
+            <div class="text-center mt-4">
+                <a href="{% url 'landing:logout' %}" class="text-muted small">Sign out</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
