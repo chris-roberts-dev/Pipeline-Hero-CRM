@@ -1,10 +1,17 @@
 # MyPipelineHero CRM
 ## Product Requirements & Architecture Specification
 
-**Document status:** Revised baseline
+**Document status:** Revised Baseline — UI Strategy Update  
+
 **Prepared for:** MyPipelineHero CRM Development  
+
 **Primary stack baseline:** Django 5.2+, Python 3.14, PostgreSQL 17, Docker-first architecture  
-**Document purpose:** Define the confirmed requirements, recommended system layout, phased roadmap, and implementation guardrails for a multi-tenant Django CRM that supports leads, quoting, clients, services, resale products, in-house manufactured products, purchasing, work execution, and invoicing.
+
+**UI strategy:** Two-phase delivery
+  - **Phase 1:** server-rendered Django templates for the full CRM build
+  - **Phase 2:** custom React front-end for the tenant-facing application after the CRM is functionally complete.  
+
+**Document purpose:** Define the confirmed requirements, recommended system layout, phased roadmap, and implementation guardrails for a multi-tenant Django CRM that supports leads, quoting, clients, services, resale products, in-house manufactured products, purchasing, work execution, and invoicing — delivered first as a server-rendered Django application and subsequently reskinned with a React tenant portal over a stable service/API boundary.
 
 ---
 
@@ -27,11 +34,18 @@ Fulfillment artifacts must support:
 - **Purchase Orders** for bought-and-resold items,
 - **Build Orders** for in-house custom products.
 
-The application will use **row-based multi-tenancy**, a **custom email-first user model**, **global support/super-admin users**, **organization-scoped membership and RBAC**, a **central marketing/login site**, and **tenant subdomain portals** under the pattern:
+The application will use **row-based multi-tenancy**, a **custom email-first user model**, **global support/super-admin users**, **organization-scoped membership and RBAC**, a **custom central login landing page** on the root domain (with a public marketing site deferred to a later phase), and **tenant subdomain portals** under the pattern:
 
 `{slug}.mypipelinehero.com`
 
-The Django admin will exist as an **internal platform/configuration console**, not the primary business-user application. Tenant-facing workflows should live in the main CRM application UI.
+The Django admin will exist as an **internal platform/configuration console**, not the primary business-user application. Tenant-facing workflows must live in the main CRM application UI.
+
+The tenant-facing UI is delivered in two phases:
+
+- **Phase 1 (initial build):** Server-rendered Django templates using the Django templating system. This phase delivers the complete CRM — all domains, workflows, state machines, pricing, fulfillment, and billing — behind Django views and templates. A **custom login landing page** served at the root domain allows both tenant users and platform/support users to authenticate. This is the primary product deliverable for the CRM build.
+- **Phase 2 (post-CRM):** A custom **React** tenant-facing front-end replaces the tenant portal's Django-templated screens. The React application consumes a stable internal JSON API layer exposed by the Django backend. The Django admin, login landing page, and support/impersonation tooling remain server-rendered.
+
+All Phase 1 implementation work must keep business logic in the service layer (not in views or templates) so the Phase 2 API layer can be built on top of the same services without duplication.
 
 ---
 
@@ -57,25 +71,27 @@ The following decisions were explicitly confirmed and must be treated as require
 ### 2.3 Application Flow
 - Post-acceptance object model: **accepted quote must create a Sales Order / Client Order first**
 - Service fulfillment: **accepted service lines generate Work Orders / Jobs**
-- Cardinality: **one SalesOrderLine generates exactly one WorkOrder** 
+- Cardinality: **one SalesOrderLine generates exactly one WorkOrder** (resolved — LF-07)
 - Product fulfillment:
   - resale items generate **Purchase Orders** as needed
   - in-house custom items generate **Build Orders**
 
 ### 2.4 Commercial and Operations Scope
-- Pricing engine: **structured pricing engine required — strategy pattern by line type** 
+- Pricing engine: **structured pricing engine required — strategy pattern by line type** (resolved — LF-05)
 - Manufacturing scope: **Build Orders + BOM + labor/material actual costing**
-- BOM versioning: **effective-from date versioning; Build Orders reference a specific BOM version**
+- BOM versioning: **effective-from date versioning; Build Orders reference a specific BOM version** (resolved — LF-06)
 - Client model: **customer hierarchy with billing account, contacts, and multiple locations/sites**
 - Client matching on acceptance: **user explicitly selects existing client or confirms new client creation before acceptance proceeds** (resolved — LF-03)
 - Acceptance: **internal status transition only** for initial implementation
 - Billing: **include invoicing and payment tracking, but not full accounting**
 
 ### 2.5 UI / Admin Direction
-- Application posture: **server-rendered Django first**
-- Admin direction: **Django admin for internal platform/configuration, not primary business workflows**
-- Main site requirement: **marketing/landing page with central login**
-- Tenant users are routed to `https://{slug}.mypipelinehero.com`
+- Application posture (Phase 1): **server-rendered Django using the Django templating system** for the complete CRM build
+- Application posture (Phase 2, post-CRM): **custom React front-end** for the tenant-facing application, consuming an internal JSON API backed by the same Django service layer
+- Admin direction: **Django admin for internal platform/configuration, not primary business workflows** — remains server-rendered in both phases
+- Landing page requirement (Phase 1): **custom login landing page** on the root domain that authenticates both tenant users and platform/support users; full marketing site is deferred
+- Tenant users are routed to `https://{slug}.mypipelinehero.com` in both phases
+- Service-layer discipline is a UI-phase prerequisite: views and templates must remain thin so the Phase 2 API layer reuses existing services without logic duplication
 
 ### 2.6 Authorization
 - RBAC model: **org-scoped roles + capability-level grants + support/super-admin exceptions**
@@ -83,7 +99,7 @@ The following decisions were explicitly confirmed and must be treated as require
 - Tenants must be able to **define additional roles/capabilities**
 
 ### 2.7 Session Management
-- A user may have **one active tenant session per browser context at a time**
+- A user may have **one active tenant session per browser context at a time** (resolved — LF-08)
 - Opening a second tenant subdomain in the same browser does not invalidate the first session but does not inherit context from it
 
 ### 2.8 Implementation Architecture Decisions
@@ -99,6 +115,8 @@ The following decisions were explicitly confirmed and must be treated as require
   - **OpenTelemetry optional later** if distributed tracing needs expand
 - Accounting integration posture: **define an adapter/integration boundary now; defer product selection until later**
 - Scheduling/dispatch posture: **basic work-order assignment/scheduling in the current phase; advanced dispatch/routing deferred**
+- Internal API layer posture: **service-layer-first architecture in Phase 1**, with a thin internal JSON API to be introduced in Phase 2 to support the React tenant portal. No public/external API is in scope for v1. Views in Phase 1 may call a shared Django REST Framework (or equivalent) serializer/service pair where it is natural to do so, but the full API surface is not required until Phase 2.
+- Front-end framework (Phase 2): **React**. The specific React toolchain (build tool, routing library, state/data-fetching library, component library) is deferred to a dedicated Phase 2 design sprint.
 
 ---
 
@@ -112,18 +130,21 @@ The following decisions were explicitly confirmed and must be treated as require
    - resale products,
    - manufactured/custom-built products.
 4. Support tenant-specific roles, pricing logic, and operational workflows.
-5. Provide a professional SaaS experience with a root marketing/login site and branded tenant portals.
-6. Support growth from a server-rendered monolith into a more modular platform over time.
+5. Provide a professional SaaS experience with a custom login landing page (Phase 1) and branded tenant portals.
+6. Deliver the full CRM first as a server-rendered Django application (Phase 1), then reskin the tenant-facing portal with a React front-end (Phase 2) without rewriting business logic.
+7. Support growth from a server-rendered monolith into a more modular platform over time.
 
 ### 3.2 Non-Goals for Initial Release
-The following are intentionally out of scope unless later approved:
+"Initial release" refers to Phase 1 (the server-rendered Django CRM, through Milestone 6). The following are intentionally out of scope for Phase 1 unless later approved:
 - Full double-entry accounting / general ledger
 - Full warehouse management system functionality
 - Native e-signature platform implementation
 - Native payment processor as system of record for accounting
-- Mobile-native applications
-- Customer-facing public quote builder
+- Mobile-native applications (Phase 2 React front-end is web-only; a native mobile app is not in scope)
+- Customer-facing public quote builder (i.e. external, non-tenant users)
 - Schema-per-tenant deployment model
+- Public marketing website on the root domain (Phase 1 delivers only a custom login landing page; see Section 9.1)
+- Public or third-party-facing API (the Phase 2 API is internal, consumed only by the first-party React tenant portal)
 
 ---
 
@@ -137,19 +158,25 @@ The following are intentionally out of scope unless later approved:
 6. **Docker is first-class, not an afterthought** — dev, CI, and production workflows must respect this.
 7. **Design for role flexibility** — default roles are required, but tenant-specific extensions must be supported.
 8. **Build for observability and auditability** — especially impersonation, tenant switching, pricing overrides, and status transitions.
+9. **The service layer is the stable contract** — Phase 1 delivers the CRM through Django views and templates, but every state-changing operation lives in a service function with a plain-Python signature. Phase 2's React + API migration is a UI swap, not a domain rewrite. Views are thin; templates contain no business logic; state machines are enforced in services; pricing runs through the engine from services only.
 
 ---
 
 ## 5. High-Level Architecture
 
 ### 5.1 Architectural Style
-The platform should be implemented as a **server-rendered Django application** using conventional Django views, templates, forms, and service-layer orchestration.
+The platform is delivered in two UI phases against a single shared backend.
 
-The implementation should:
-- prioritize Django-native patterns,
+**Phase 1 — server-rendered Django.** The entire CRM is implemented as a conventional Django application using Django views, forms, templates (the Django templating system), and a service-layer orchestration pattern. This is the primary build effort.
+
+**Phase 2 — React tenant portal.** After the Phase 1 CRM is functionally complete, a custom React front-end replaces the tenant-portal screens. React consumes a thin internal JSON API exposed by the Django backend. The Django admin, the login landing page, and all support/impersonation tooling remain server-rendered.
+
+The implementation, in both phases, must:
+- prioritize Django-native patterns for the backend,
 - keep business logic out of templates and thin views,
-- centralize domain workflows in service/application layers,
-- allow future API expansion without forcing API-first architecture on v1.
+- centralize domain workflows in service/application layers so both Django views and the Phase 2 API can call the same services,
+- treat the service layer as the stable contract — UI technology changes must not require rewriting domain logic,
+- allow the Phase 2 API to be grown incrementally on top of existing services without forcing API-first architecture onto v1.
 
 ### 5.2 Recommended Architectural Shape
 A pragmatic modular monolith is recommended.
@@ -387,11 +414,23 @@ The system must support:
 ## 9. Domain, URL, and Login Flow Requirements
 
 ### 9.1 Root Site
-The root domain `mypipelinehero.com` must provide:
-- public marketing/landing pages,
-- login entry point,
-- support/admin access entry points as needed,
-- organization picker for multi-org users after authentication.
+The root domain `mypipelinehero.com` must provide different experiences in each UI phase.
+
+#### Phase 1 — Custom Login Landing Page
+During the Django-first CRM build, the root domain must provide a **custom login landing page** serving as the single authentication entry point for the platform. A full public marketing site is **not** required in Phase 1.
+
+Phase 1 root site requirements:
+- custom branded login landing page (server-rendered Django templates)
+- login entry point for **tenant users** (members of one or more organizations)
+- login entry point for **platform/support users** (super-admins and support staff), using the same login form — user type is determined by identity, not by a separate URL
+- password reset flow
+- invite acceptance flow
+- organization picker for multi-org users after authentication
+- post-login routing to the appropriate tenant subdomain (tenant users) or the platform console (platform users)
+- lightweight public pages only as needed (e.g., terms, privacy, support contact); no marketing funnel
+
+#### Phase 2 — Public Marketing Site (future)
+In Phase 2 or later, the root domain may be expanded to host a full public marketing site (product messaging, demo request, pricing, etc.) alongside the login landing page. The Phase 1 login landing page must be designed so it can be embedded in, or coexist with, a future marketing site without rework to the authentication flow.
 
 ### 9.2 Tenant Portal Domain Pattern
 Tenant portals must live under:
@@ -757,7 +796,7 @@ The system must support leads as pre-client commercial opportunities.
 ### 11.3 Quote and Quote Versioning
 Quotes must support mixed commercial lines and multiple versions.
 
-#### Quote container model
+#### Quote container model (resolved — LF-02)
 The versioning model uses a parent Quote container with child QuoteVersion records:
 
 ```
@@ -892,7 +931,7 @@ A single accepted order may contain multiple line types.
 
 ## 13. Pricing and Costing Requirements
 
-### 13.1 Pricing Engine Architecture
+### 13.1 Pricing Engine Architecture (resolved — LF-05)
 The platform must implement a **strategy pattern by line type** pricing engine.
 
 #### Design
@@ -1007,7 +1046,7 @@ Build Orders are required for custom/in-house product development.
 ### 15.2 BOM Requirements
 The platform must support BOM definitions for manufactured products with version history.
 
-#### BOM versioning strategy
+#### BOM versioning strategy (resolved — LF-06)
 - BOMs use effective-from date versioning.
 - Each BOM version is immutable once active.
 - Build Orders reference the specific BOM version active at the time the build is started.
@@ -1043,7 +1082,7 @@ The system must support:
 ## 16. Work Order / Job Requirements
 
 ### 16.1 Work Orders Are Required
-Accepted service lines must generate Work Orders / Jobs. **One SalesOrderLine of service type generates exactly one WorkOrder**.
+Accepted service lines must generate Work Orders / Jobs. **One SalesOrderLine of service type generates exactly one WorkOrder** (resolved — LF-07).
 
 ### 16.2 Minimum Work Order Capabilities
 - create from order line (one-to-one with SalesOrderLine of service type)
@@ -1136,7 +1175,9 @@ Custom app ordering and model ordering must be supported and not left to Django'
 
 ## 19. Main Application UI Requirements
 
-### 19.1 Application Experience
+The tenant-facing application UI is delivered in two phases. Phase 1 is a server-rendered Django application that delivers the complete CRM. Phase 2 replaces the tenant-facing portion with a custom React front-end once the CRM is functionally complete.
+
+### 19.1 Application Experience (both phases)
 The tenant portal must provide business-facing screens for at least:
 - dashboard/home
 - leads
@@ -1147,19 +1188,81 @@ The tenant portal must provide business-facing screens for at least:
 - purchase orders
 - build orders
 - invoices
+- tenant administration (members, roles, org settings)
 
-### 19.2 Server-Rendered UI Requirement
-The UI should be implemented with server-rendered Django templates/forms unless a later decision explicitly approves a richer client-side stack for specific features.
+Phase 2 must deliver feature parity with Phase 1 across all of the above before Phase 1 tenant screens may be retired.
 
-### 19.3 Root Marketing Site Requirement
-The root site must include:
-- marketing homepage
-- product/feature messaging
-- login entry point
-- optional contact/demo flow if desired later
+### 19.2 Phase 1 — Server-Rendered Django Templating
+All tenant-facing screens in Phase 1 must be implemented using the **Django templating system** with conventional Django views and forms.
 
-### 19.4 Scheduling and Dispatch Boundary
-For the current implementation phase, tenant-facing work-order UX must support basic assignment, due/scheduled dates, checklists, notes, and completion tracking. Advanced dispatch capabilities are explicitly deferred.
+#### Requirements
+- Implement using Django views, Django forms, and Django templates — no standalone SPA framework in Phase 1.
+- Template inheritance from a shared base layout; reusable includes/partials for common components (tables, filters, form fields, status badges, pagination).
+- Progressive enhancement only (small, scoped JavaScript for interactive behaviors such as inline validation, modal dialogs, or pricing previews). A full client-side state framework is out of scope for Phase 1.
+- HTMX or similar server-driven interactivity is permitted where it meaningfully improves UX (e.g., dynamic line-item editing on a quote) but is not mandated; decisions made case-by-case.
+- CSRF tokens, standard Django form rendering, and Django messages framework for user feedback.
+- Server-rendered pagination, filtering, sorting, and search — no client-side data grids.
+- All views must be thin: they must delegate every state-changing operation to the service layer. Views must not embed business logic. This is enforced by code review and is a prerequisite for Phase 2.
+
+#### Explicit scope
+- Phase 1 is the CRM. Every domain, workflow, and state machine listed elsewhere in this document is implemented here.
+- Phase 1 ships to production and is used by real tenants until Phase 2 replaces the tenant-facing screens.
+
+### 19.3 Phase 2 — Custom React Tenant-Facing Front-End
+Once the Phase 1 CRM is functionally complete and stable in production, a custom React front-end replaces the tenant-facing screens.
+
+#### Requirements
+- Implemented in **React** as a single-page application served from the tenant subdomain (`https://{slug}.mypipelinehero.com`).
+- Consumes a thin internal JSON API exposed by the Django backend (see Section 19.5).
+- Authenticates using the existing handoff token flow (Section 9.4); after handoff, the tenant-local session authorizes API calls (cookie-based or equivalent — specific mechanism selected in the Phase 2 design sprint).
+- Must enforce the same RBAC capability model as Phase 1. The API, not the React client, is the authoritative enforcement point; the client uses capability data to show/hide UI but never as a security boundary.
+- Must respect the same organization context model — API requests are always scoped to the active organization.
+- Must deliver feature parity across all screens listed in Section 19.1 before Phase 1 tenant screens are retired.
+
+#### Explicit out-of-scope for Phase 2 initial release
+- Native mobile applications
+- Offline-first behavior
+- Customer-facing (external, non-tenant) UI
+
+#### Deferred Phase 2 selections
+The following are intentionally deferred to a dedicated Phase 2 design sprint and are not required to be resolved before Phase 1 begins:
+- React build tool / framework (e.g., Vite + React, Next.js in SPA mode, Remix, etc.)
+- Routing library
+- Data-fetching / caching library (e.g., TanStack Query, RTK Query)
+- Component / design system library
+- CSS strategy (CSS-in-JS vs utility-first vs CSS modules)
+- Build/deployment pipeline for the React bundle (served by Django vs separate static host vs CDN)
+
+### 19.4 Components Retained Server-Rendered in Phase 2
+The following components remain server-rendered Django templates in Phase 2 and are **not** migrated to React:
+- Django admin / internal platform console (Section 18)
+- Custom login landing page on the root domain (Section 9.1)
+- Password reset, invite acceptance, and organization picker flows
+- Support impersonation tooling and banner
+- Email templates (invoice PDFs, notification emails, etc.)
+- Error pages, terms/privacy pages, health check pages
+
+The cross-subdomain handoff flow (Section 9.4) is unchanged between phases.
+
+### 19.5 Internal API Layer (Phase 2 prerequisite)
+A thin internal JSON API must be introduced to support the Phase 2 React client.
+
+#### Required posture
+- The API is **internal**, not public. It is consumed only by the first-party React tenant portal. A public/external API is out of scope for Phase 2 initial release.
+- The API must be a thin layer over the existing service layer. It must not re-implement business logic or bypass service-layer orchestration.
+- Every API endpoint must enforce the same three-layer RBAC rule as Phase 1 (queryset scoping + capability check + object-level check, per Section 10.5).
+- Every state-changing API endpoint must produce the same AuditEvent as its Phase 1 view counterpart.
+- Pricing must be executed by the same `PricingEngine` strategies invoked from the same service layer; the API must not introduce an alternate pricing path.
+- State machine transitions must go through the same service methods; direct API mutations of status fields are prohibited.
+- The API library selection (e.g., Django REST Framework, Django Ninja) is deferred to the Phase 2 design sprint. Tenants and capabilities are not affected by this choice.
+
+#### Phase 1 obligations to support Phase 2 API
+- Service layer must be exhaustive — every state-changing operation invoked by a Phase 1 view must have a corresponding service function.
+- Services must accept plain Python arguments (not Django request objects) and return plain Python results, so they are directly callable from API views.
+- Domain errors must be raised as typed exceptions (not HTTP responses) so the API layer can translate them consistently.
+
+### 19.6 Scheduling and Dispatch Boundary
+For both Phase 1 and Phase 2 initial delivery, tenant-facing work-order UX must support basic assignment, due/scheduled dates, checklists, notes, and completion tracking. Advanced dispatch capabilities are explicitly deferred.
 
 ---
 
@@ -1301,6 +1404,8 @@ This section defines the recommended model inventory for planning purposes. Name
 
 ## 23. Recommended Django Project Layout
 
+The layout below reflects the **Phase 1 Django-first** build. The Phase 2 additions (internal API app and React front-end directory) are noted inline and introduced when Phase 2 begins — they are not required to exist in Phase 1 but the layout anticipates them.
+
 ```text
 mypipelinehero/
 ├── manage.py
@@ -1323,9 +1428,9 @@ mypipelinehero/
 │   │   ├── audit/
 │   │   └── support/
 │   ├── web/
-│   │   ├── marketing/
+│   │   ├── landing/            # custom login landing page (Phase 1; retained in Phase 2)
 │   │   ├── auth_portal/
-│   │   └── tenant_portal/
+│   │   └── tenant_portal/      # Django-templated tenant UI (Phase 1)
 │   ├── crm/
 │   │   ├── leads/
 │   │   ├── quotes/
@@ -1343,6 +1448,7 @@ mypipelinehero/
 │   │   ├── purchasing/
 │   │   ├── build/
 │   │   └── workorders/
+│   ├── api/                    # Phase 2 — internal JSON API for React tenant portal
 │   └── common/
 │       ├── admin/
 │       ├── tenancy/
@@ -1354,6 +1460,7 @@ mypipelinehero/
 ├── templates/
 ├── static/
 ├── media/
+├── frontend/                   # Phase 2 — React tenant-facing SPA source tree
 ├── requirements/
 ├── docker/
 │   ├── django/
@@ -1363,6 +1470,12 @@ mypipelinehero/
 ├── compose.yaml
 └── .env.example
 ```
+
+**Notes:**
+- `apps/web/landing/` replaces the previously named `marketing/` directory to reflect the Phase 1 login-landing-page scope. A future marketing site can be added as a separate sub-app when/if approved.
+- `apps/web/tenant_portal/` holds the Phase 1 server-rendered tenant UI. In Phase 2 it remains in place during transition and is retired only once the React client reaches feature parity.
+- `apps/api/` is created at the start of Phase 2. It must not contain business logic — only request/response handling and service-layer invocation.
+- `frontend/` is created at the start of Phase 2 and contains the React source tree. Its internal structure is defined in the Phase 2 design sprint.
 
 ---
 
@@ -1394,7 +1507,7 @@ The Docker-based environment must support:
 - Per-environment settings modules must be supported
 
 ### 24.5 Confirmed Subdomain Development Strategy
-Local development must include a reverse-proxy-based wildcard local domain strategy. Developers must be able to access the marketing/login site and tenant portals locally using distinct hostnames. The chosen local domain pattern must be documented in onboarding/setup instructions.
+Local development must include a reverse-proxy-based wildcard local domain strategy. Developers must be able to access the login landing page (root domain) and tenant portals locally using distinct hostnames. The chosen local domain pattern must be documented in onboarding/setup instructions.
 
 ### 24.6 Document and Media Storage Strategy
 - Dev/test environments: local filesystem-backed storage
@@ -1530,6 +1643,12 @@ The project must include automated tests for:
 ## 29. Milestone Plan and Estimated Timing
 
 Estimates assume a single senior full-stack developer. Multiply by 0.6 for a team of three developers.
+
+**Phase 1 (Milestones 0–6)** delivers the full CRM as a server-rendered Django application using the Django templating system. Phase 1 is the primary build effort and ships to production at the end of Milestone 6.
+
+**Phase 2 (Milestones 7–8)** adds the internal JSON API layer and replaces the tenant-facing Django screens with a custom React front-end. Phase 2 begins only after Milestone 6 has shipped and the Phase 1 CRM is stable in production with real tenants.
+
+Within all Phase 1 milestones, the tenant-facing UI is implemented using Django views, forms, and templates per Section 19.2. Service-layer discipline (Section 19.5) is non-negotiable in every Phase 1 milestone — it is the prerequisite that makes Phase 2 feasible.
 
 ### Milestone 0 — Pre-Build Design Sprint
 **Estimated duration:** 2 weeks
@@ -1696,6 +1815,69 @@ Estimates assume a single senior full-stack developer. Multiply by 0.6 for a tea
 
 ---
 
+**End of Phase 1.** At this point the full CRM is live in production as a server-rendered Django application. Phase 2 begins only after a Phase 2 design sprint has resolved the deferred React toolchain selections (Section 19.3).
+
+### Milestone 7 — Internal API Layer (Phase 2 Part 1)
+**Estimated duration:** 4–6 weeks
+
+#### Scope
+- Phase 2 design sprint outputs ratified (React toolchain, API library, auth-to-API strategy for the tenant-local session)
+- Introduce `apps/api/` with selected API library (DRF, Django Ninja, or equivalent)
+- Authentication mechanism for API calls from the React client (session-based or token-based — chosen in design sprint)
+- API endpoints for the full Phase 1 capability surface, implemented as thin wrappers over existing services:
+  - leads, quotes (including versioning and acceptance), clients, orders
+  - catalog (services, products, materials, suppliers, BOMs, pricing rules)
+  - work orders, purchase orders, build orders (including labor entries)
+  - invoices and payments
+  - tenant admin (members, roles, capability grants)
+  - current-user context endpoint (active org, capability set, impersonation state)
+- Three-layer RBAC enforcement on every endpoint (queryset scoping + capability check + object-level check)
+- AuditEvent parity with Phase 1 for every state-changing endpoint
+- Domain exception → HTTP response translation layer
+- Rate limiting aligned with Phase 1 sensitive endpoints
+- API contract tests: every endpoint has a passing test for success, RBAC denial, and invalid state transition
+- API documentation (OpenAPI schema or equivalent) for internal consumption
+
+#### Exit criteria
+- Full feature parity between API endpoints and Phase 1 views for every tenant-facing workflow
+- RBAC capability coverage test extended to all API routes
+- Pricing engine replay test passes when invoked through the API path
+- No business logic duplicated between `apps/api/` and Phase 1 views — both paths call the same service functions
+- OpenAPI schema published to internal developer documentation
+
+### Milestone 8 — React Tenant Portal (Phase 2 Part 2)
+**Estimated duration:** 10–14 weeks
+
+#### Scope
+- `frontend/` React application scaffolded per Phase 2 design sprint output
+- Build and deployment pipeline for the React bundle
+- Handoff token completion endpoint updated to establish the tenant-local session used by the React client
+- Impersonation banner rendered consistently in React (data sourced from current-user context endpoint)
+- Implementation of all tenant-facing screens listed in Section 19.1:
+  - dashboard/home
+  - leads (list, detail, create, edit, archive, assign, convert)
+  - quotes (list, detail, version navigation, line editing with pricing preview, send, accept, decline)
+  - clients (list, detail, contacts, locations, merge)
+  - orders (list, detail, cancellation with reason)
+  - work orders (list, detail, assignment, status updates, completion with outcome notes)
+  - purchase orders (list, detail, receipt recording, submission, cancellation)
+  - build orders (list, detail, labor entry, QA review, cost analysis)
+  - invoices and payments (list, detail, creation, sending, payment recording)
+  - tenant admin (members, roles, capability grants, org settings)
+- Client-side capability gating for UI visibility (mirroring, not replacing, server-side enforcement)
+- Feature-parity acceptance suite: every Phase 1 tenant-facing user flow has an equivalent passing flow in React
+- Staged cutover: React screens enabled per-tenant behind a feature flag; Phase 1 Django tenant screens retained as fallback during transition
+- Retirement of Phase 1 tenant-portal templates once all tenants are on React and acceptance suite is green
+
+#### Exit criteria
+- All tenant-facing screens delivered in React with feature parity to Phase 1
+- Feature-parity acceptance suite green
+- All tenants migrated to the React portal
+- Phase 1 `apps/web/tenant_portal/` screens retired
+- Django admin, custom login landing page, password reset / invite flows, and impersonation tooling remain server-rendered and functional
+
+---
+
 ## 30. Major Risks and Considerations
 
 ### 30.1 Tenant Leakage Risk
@@ -1719,6 +1901,15 @@ Build orders, BOMs, and actual costing can grow quickly into light ERP behavior.
 ### 30.7 Idempotency Discipline
 All Celery tasks that create state records (fulfillment artifacts, invoice generation, PDF generation) must be idempotent. This must be enforced by code review and tested explicitly.
 
+### 30.8 Phase 2 Service-Layer Discipline Risk
+The feasibility of Phase 2 (React + internal API) depends entirely on the service layer being exhaustive and decoupled from HTTP concerns during Phase 1. If Phase 1 views accumulate business logic, import Django request objects into service signatures, or short-circuit state machines, the Phase 2 API will not be a thin wrapper — it will be a second implementation, with two code paths for every state transition. This is the single largest risk to the phased UI plan and is mitigated only by disciplined code review during all of Phase 1.
+
+### 30.9 Phase 2 Feature-Parity Drift Risk
+Phase 1 Django templates will continue to receive small enhancements (bug fixes, minor UX improvements, new filters) while Phase 2 is being built. Without an explicit parity tracker, React screens risk shipping with subtly different behavior from their Phase 1 counterparts. Mitigation: maintain a feature-parity acceptance checklist updated on every Phase 1 change after Milestone 6 ships, and do not retire any Phase 1 screen until its checklist row is green in React.
+
+### 30.10 Phase 2 RBAC Enforcement Point Confusion
+The React client will hold capability data locally to show/hide UI elements. There is a risk that developers begin treating client-side capability checks as security enforcement. Mitigation: every API endpoint must enforce capabilities independently; endpoint tests must include RBAC denial cases; the React codebase must carry an explicit comment/convention that client capability checks are UX-only.
+
 ---
 
 ## 31. Resolved Architecture Decisions
@@ -1732,14 +1923,18 @@ All Celery tasks that create state records (fulfillment artifacts, invoice gener
 5. **Monitoring:** Structured JSON logging + Sentry (web and worker). OpenTelemetry optional later.
 6. **Accounting integration:** No external product selected for v1. Internal integration boundary (external_id, sync_status, sync_error fields on Invoice and Payment).
 7. **Advanced scheduling/dispatch:** Deferred. Basic assignment and scheduled dates only in v1.
-8. **Quote versioning:** Parent Quote container + QuoteVersion children.
-9. **Client matching on acceptance:** User explicitly selects or confirms client before acceptance transition completes.
-10. **Pricing engine:** Strategy pattern by line type with shared override/discount layer. Engine invoked from service layer only.
-11. **BOM versioning:** Effective-from date versioning. Build Orders reference specific BOM version at build start.
-12. **Work order cardinality:** One SalesOrderLine generates exactly one WorkOrder.
-13. **Concurrent tenant sessions:** One active tenant session per browser context. Sessions do not inherit across subdomains.
+8. **Quote versioning:** Parent Quote container + QuoteVersion children (LF-02).
+9. **Client matching on acceptance:** User explicitly selects or confirms client before acceptance transition completes (LF-03).
+10. **Pricing engine:** Strategy pattern by line type with shared override/discount layer. Engine invoked from service layer only (LF-05).
+11. **BOM versioning:** Effective-from date versioning. Build Orders reference specific BOM version at build start (LF-06).
+12. **Work order cardinality:** One SalesOrderLine generates exactly one WorkOrder (LF-07).
+13. **Concurrent tenant sessions:** One active tenant session per browser context. Sessions do not inherit across subdomains (LF-08).
 14. **Connection pooling:** pgBouncer in Docker environment from day one.
 15. **Storage abstraction:** `django-storages` as the abstraction layer.
+16. **UI delivery strategy:** Two phases — Phase 1 server-rendered Django templating for the full CRM build; Phase 2 custom React tenant-facing front-end over an internal JSON API. Django admin, login landing page, password reset / invite flows, and impersonation tooling remain server-rendered in both phases.
+17. **Root-domain landing (Phase 1):** Custom login landing page for both tenant users and platform/support users. Public marketing site deferred.
+18. **Internal API layer:** Introduced in Phase 2 as a thin wrapper over the existing service layer. Internal (first-party React client) only — no public/external API in scope for v1 or Phase 2 initial release.
+19. **Service-layer discipline:** Phase 1 views must delegate all state-changing operations to service functions with plain-Python signatures. This is a hard prerequisite for Phase 2.
 
 ### 31.2 Deferred Selections (Not Current Blockers)
 - Specific S3-compatible storage vendor
@@ -1747,7 +1942,9 @@ All Celery tasks that create state records (fulfillment artifacts, invoice gener
 - Log sink beyond Sentry
 - External accounting package (if integration is later approved)
 - Route optimization or richer scheduling tooling
-- API layer beyond the internal integration boundary
+- Public/external API (out of scope for v1 and Phase 2 initial release)
+- Phase 2 React toolchain selections: build tool / framework, routing library, data-fetching library, component/design system library, CSS strategy, API library (DRF vs Django Ninja vs equivalent), and React-bundle deployment pipeline. All resolved in a dedicated Phase 2 design sprint before Milestone 7 begins.
+- Public marketing site scope, design, and timing (post-Phase 1)
 
 ---
 
