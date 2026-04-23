@@ -1,10 +1,27 @@
+"""
+Custom user model and manager.
+
+Spec §8.1 mandates email as the primary identity and forbids using Django's
+default username field. This model MUST be in place before the very first
+migration that creates auth tables, because swapping AUTH_USER_MODEL after
+data exists is a world of pain.
+
+Design notes:
+  - `is_staff` is preserved because Django's admin requires it.
+  - `is_superuser` marks platform-level super-admins (spec §7.4). Support users
+    who are NOT superusers are modeled separately in M2 via a `SupportProfile`
+    or role-based flag — we're deferring that until RBAC lands.
+  - No username field. AbstractBaseUser is the minimal base without username;
+    PermissionsMixin gives us `is_superuser`, groups, and user_permissions so
+    Django's auth backend keeps working the way people expect.
+  - We keep `groups` and `user_permissions` even though we're building our own
+    RBAC in M2, because the admin and Django's test utilities assume they
+    exist. Our RBAC is layered on top, not a replacement.
+"""
+
 from __future__ import annotations
 
-from django.contrib.auth.models import (
-    AbstractBaseUser,
-    BaseUserManager,
-    PermissionsMixin,
-)
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 

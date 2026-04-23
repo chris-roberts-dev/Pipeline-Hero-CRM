@@ -10,7 +10,6 @@ dispatch. It also prevents accidental cross-mounting — root URL patterns
 are simply unreachable on a tenant subdomain and vice versa.
 """
 
-from django.conf import settings
 from django.http import JsonResponse
 from django.urls import include, path
 
@@ -25,13 +24,13 @@ urlpatterns = [
     path("", include("apps.web.auth_portal.urls")),
 ]
 
-# Debug toolbar — only when available and in DEBUG.
-if settings.DEBUG:
-    try:
-        import debug_toolbar  # noqa: F401
-
-        urlpatterns += [
-            path("__debug__/", include("debug_toolbar.urls")),
-        ]
-    except ImportError:
-        pass
+# Register debug-toolbar URLs whenever the module is importable. This is
+# broader than the usual "only in DEBUG" pattern because the toolbar's
+# middleware (if active) calls reverse("djdt:...") regardless of DEBUG, and
+# missing the namespace crashes the request. Harmless when the middleware
+# is disabled — the URLs just sit unused.
+try:
+    import debug_toolbar  # noqa: F401
+    urlpatterns += [path("__debug__/", include("debug_toolbar.urls"))]
+except ImportError:
+    pass

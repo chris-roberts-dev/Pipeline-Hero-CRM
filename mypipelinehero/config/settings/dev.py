@@ -13,6 +13,13 @@ from .base import (  # explicit imports for things we mutate below
     env,
 )
 
+# Python imports return the SAME list objects as base.py's module globals.
+# Mutating them in place (with `+=` or `.insert()`) leaks back into base.py
+# and contaminates sibling settings modules (especially test.py) in the same
+# Python process. Copy them once here so our mutations stay local.
+INSTALLED_APPS = list(INSTALLED_APPS)
+MIDDLEWARE = list(MIDDLEWARE)
+
 DEBUG = True
 
 # In dev we accept any *.localhost host. The "." prefix tells Django to match

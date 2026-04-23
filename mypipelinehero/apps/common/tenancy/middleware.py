@@ -1,7 +1,33 @@
+"""
+Tenancy middleware: resolve tenant subdomain to an Organization.
+
+For every request to `{slug}.{ROOT_DOMAIN}`, this middleware looks up the
+Organization by slug and attaches it to `request.organization`. Requests to
+the root domain itself get `request.organization = None` — those are handled
+by the central login / landing page views.
+
+Resolution is cached in Redis (spec §9.2) with a short TTL, invalidated on
+slug/status change. The cache key includes both the slug and a version marker
+so invalidation is explicit rather than relying on TTL expiry alone.
+
+This middleware does NOT establish a tenant session — that's the handoff-
+completion endpoint's job (coming in the next step). All this does is make
+the tenant context available to downstream views and services.
+
+Security posture:
+  - Inactive or unknown slugs resolve to `None`, and the downstream view is
+    responsible for rendering 404 — we don't 404 here so logging middleware
+    sees a real request we can attribute.
+  - The Host header is the only input. Django's ALLOWED_HOSTS has already
+    validated it by the time middleware runs, so we're not defending against
+    header injection here (that's ALLOWED_HOSTS's job).
+"""
+
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from typing import Optional
 
 from django.conf import settings
 from django.core.cache import cache
@@ -16,7 +42,7 @@ def _cache_key(slug: str) -> str:
     return f"tenancy:org_by_slug:v1:{slug}"
 
 
-def _resolve_slug_from_host(host: str, root_domain: str) -> str | None:
+def _resolve_slug_from_host(host: str, root_domain: str) -> Optional[str]:
     """Given `Host` header and the configured root domain, return the subdomain
     slug or None.
 
@@ -79,9 +105,7 @@ class TenancyMiddleware:
                 # Log but don't block — the view layer decides how to respond
                 # (404 page, redirect to root, etc.). This runs on every request
                 # to an unknown subdomain so keep the log level INFO not WARNING.
-                logger.info(
-                    "tenancy: unknown or inactive slug %r on host %r", slug, host
-                )
+                logger.info("tenancy: unknown or inactive slug %r on host %r", slug, host)
                 # Unknown subdomain: route via root URL tree so the 404 page
                 # is rendered by root-domain handlers, and the user can still
                 # reach `/login/` to recover.
@@ -123,7 +147,9 @@ class TenancyMiddleware:
         from apps.platform.organizations.models import Organization
 
         return (
-            Organization.objects.filter(slug=slug, status=Organization.Status.ACTIVE)
+            Organization.objects.filter(
+                slug=slug, status=Organization.Status.ACTIVE
+            )
             .only("id", "slug", "name", "status")
             .first()
         )

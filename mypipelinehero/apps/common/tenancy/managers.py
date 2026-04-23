@@ -1,3 +1,25 @@
+"""
+Tenancy managers and querysets.
+
+Every tenant-owned model uses `TenantManager` as its default manager. This gives
+every queryset a `for_org(org)` method that scopes results to a single
+organization. Tenant scoping is ALSO enforced at the service layer — this
+manager is a defense in depth, not the only line of defense.
+
+Why not auto-scope every query?
+-------------------------------
+Tempting, but wrong. Auto-scoping requires thread-locals or request-local state,
+which breaks Celery workers, management commands, shell sessions, and tests.
+It also hides the tenancy boundary from readers of the code: a `Lead.objects.all()`
+call looks safe but is actually scoped by some middleware you can't see. Explicit
+`for_org(org)` is a readability win and a correctness win.
+
+The CI test in apps/common/tests/test_tenant_manager_coverage.py enumerates every
+model with an `organization` FK and asserts its default manager is a TenantManager
+(or subclass). That's how we prevent someone from quietly adding a new model
+with `objects = models.Manager()` and bypassing tenancy checks.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -19,7 +41,7 @@ class TenantQuerySet(models.QuerySet):
     chainable with the usual Django queryset API (`filter`, `order_by`, etc).
     """
 
-    def for_org(self, organization: Organization | int | Any) -> TenantQuerySet:
+    def for_org(self, organization: "Organization | int | Any") -> "TenantQuerySet":
         """Restrict the queryset to records belonging to a single organization.
 
         Accepts either an Organization instance or a primary key value. Using

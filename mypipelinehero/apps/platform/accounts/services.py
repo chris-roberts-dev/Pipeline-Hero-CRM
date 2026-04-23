@@ -1,8 +1,31 @@
+"""
+Authentication service.
+
+Views call these functions. They return plain Python objects (dataclasses or
+model instances), not HTTP responses. Views translate the return values or
+caught exceptions into templates, redirects, or errors.
+
+Scope in M1:
+  - Password authentication against the custom User model
+  - Post-auth routing decision: where should this user land?
+
+Out of scope here (explicit):
+  - Session management — Django's login() is called by the view, not the
+    service. The service returns the authenticated user; the view decides
+    what session semantics to apply.
+  - Rate limiting — spec §26.2 requires this on login, but it's middleware
+    territory, not domain logic. Deferred to M6 hardening.
+  - Password reset / invite flows — separate service functions, added when
+    those views are built.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate
+from django.contrib.auth import get_user_model
 from django.db.models import QuerySet
 
 from apps.common.services import AuthenticationError
@@ -24,9 +47,9 @@ class LoginResult:
       - none of the above: dead end, render a "no memberships, no platform access" page
     """
 
-    user: User
+    user: "User"
     is_platform_user: bool
-    default_org: Organization | None
+    default_org: Optional[Organization]
     selectable_orgs: QuerySet
 
 

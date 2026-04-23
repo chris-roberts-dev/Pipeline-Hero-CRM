@@ -107,7 +107,11 @@ class TestSingleOrgFlow:
         tenant = Client(HTTP_HOST="acme.mypipelinehero.localhost")
         resp = tenant.get("/auth/handoff", {"token": token})
         assert resp.status_code == 302
-        assert resp["Location"] == reverse("tenant_portal:dashboard")
+        # reverse() defaults to ROOT_URLCONF; the tenant-portal namespace lives
+        # in config.urls_tenant and must be looked up there explicitly.
+        assert resp["Location"] == reverse(
+            "tenant_portal:dashboard", urlconf="config.urls_tenant"
+        )
 
         # 4. The tenant client now has an authenticated session.
         dashboard_resp = tenant.get("/")

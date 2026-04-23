@@ -7,9 +7,16 @@ in seconds, not minutes.
 """
 
 from .base import *  # noqa: F401,F403
-from .base import REDIS_URL
+from .base import INSTALLED_APPS, MIDDLEWARE, REDIS_URL
 
 DEBUG = False
+
+# Defensive list copy. Same rationale as dev.py — `from .base import` binds
+# to the same list objects. If dev.py has been imported earlier in this
+# Python process and mutated base.INSTALLED_APPS/MIDDLEWARE in place, we'd
+# inherit its pollution. Copy + filter to guarantee a clean test config.
+INSTALLED_APPS = [a for a in INSTALLED_APPS if a not in {"debug_toolbar", "django_extensions"}]
+MIDDLEWARE = [m for m in MIDDLEWARE if "DebugToolbar" not in m]
 
 # Any host during tests — RequestFactory and test Client don't care.
 ALLOWED_HOSTS = ["*"]

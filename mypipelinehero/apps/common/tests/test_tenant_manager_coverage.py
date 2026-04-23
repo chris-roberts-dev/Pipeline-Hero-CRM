@@ -1,3 +1,26 @@
+"""
+CI-enforced tenant-manager coverage test.
+
+Spec §7.3 mandates:
+    "A CI-enforced test that enumerates all models with an `organization` FK
+     and asserts they use TenantManager"
+
+This is the test that implements that guarantee. It runs in the standard
+pytest suite. If you add a new model with an `organization` FK and forget
+to inherit `TenantModel` (or otherwise forget to set `objects = TenantManager()`),
+this test fails with a clear list of offenders.
+
+Opting out
+----------
+If a future model legitimately has an `organization` FK but should NOT use
+TenantManager (very rare — AuditEvent is a real example, where the FK is
+nullable and semantics differ), add its `app_label.ModelName` to the
+EXEMPT set below with a comment explaining why.
+
+Keep the exempt list SHORT. Every exemption is a place where tenancy
+enforcement is bypassed — each one is a potential data-leak bug.
+"""
+
 from __future__ import annotations
 
 from django.apps import apps
