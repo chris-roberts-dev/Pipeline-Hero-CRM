@@ -1,0 +1,440 @@
+openapi: 3.1.0
+info:
+  title: MyPipelineHero Internal Tenant API
+  version: 0.1.0
+  description: |
+    Contract-first starter API for the React tenant portal.
+    This intentionally models a thin internal JSON layer over the Django service boundary.
+servers:
+  - url: /api/internal
+paths:
+  /session/:
+    get:
+      summary: Session bootstrap for the tenant SPA
+      operationId: getSessionBootstrap
+      responses:
+        '200':
+          description: Active tenant session bootstrap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionBootstrap'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /messages/summary/:
+    get:
+      summary: Top navbar messages summary
+      operationId: listTopbarMessages
+      responses:
+        '200':
+          description: Recent messages visible in the top navbar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopbarMessagesResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /notifications/summary/:
+    get:
+      summary: Top navbar notifications summary
+      operationId: listTopbarNotifications
+      responses:
+        '200':
+          description: Recent notifications visible in the top navbar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopbarNotificationsResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /organizations/:
+    get:
+      summary: List organizations visible to the active membership
+      operationId: listOrganizations
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: ordering
+          schema:
+            type: string
+            enum: [name, -name, updated_at, -updated_at]
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, inactive]
+      responses:
+        '200':
+          description: Paginated organizations list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationListResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed to view organizations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a organization record
+      operationId: createOrganization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreateRequest'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationSummary'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed to create organizations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /organizations/{organizationId}/:
+    get:
+      summary: Retrieve a single organization visible to the active membership
+      operationId: getOrganization
+      parameters:
+        - in: path
+          name: organizationId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organization detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated but not allowed to view organizations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    OrganizationSummary:
+      type: object
+      required: [id, name, slug, timezone, base_currency_code]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        timezone:
+          type: string
+        base_currency_code:
+          type: string
+    AuthenticatedUser:
+      type: object
+      required: [id, email, display_name, is_support_user]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        is_support_user:
+          type: boolean
+    ImpersonationState:
+      type: object
+      required: [active, acting_as_email]
+      properties:
+        active:
+          type: boolean
+        acting_as_email:
+          type: [string, 'null']
+          format: email
+    SessionBootstrap:
+      type: object
+      required: [authenticated, organization, user, capabilities, impersonation]
+      properties:
+        authenticated:
+          type: boolean
+        organization:
+          oneOf:
+            - $ref: '#/components/schemas/OrganizationSummary'
+            - type: 'null'
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/AuthenticatedUser'
+            - type: 'null'
+        capabilities:
+          type: array
+          items:
+            type: string
+        impersonation:
+          $ref: '#/components/schemas/ImpersonationState'
+    TopbarMessageItem:
+      type: object
+      required: [id, sender, preview, timeLabel, href, avatarInitials, starred, tone]
+      properties:
+        id:
+          type: string
+        sender:
+          type: string
+        preview:
+          type: string
+        timeLabel:
+          type: string
+        href:
+          type: string
+        avatarInitials:
+          type: string
+        starred:
+          type: boolean
+        tone:
+          type: string
+          enum: [danger, warning, neutral]
+    TopbarMessagesResponse:
+      type: object
+      required: [unreadCount, items]
+      properties:
+        unreadCount:
+          type: integer
+          minimum: 0
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopbarMessageItem'
+    TopbarNotificationItem:
+      type: object
+      required: [id, label, timeLabel, href, icon]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        timeLabel:
+          type: string
+        href:
+          type: string
+        icon:
+          type: string
+          enum: [message, people, report, alert]
+    TopbarNotificationsResponse:
+      type: object
+      required: [unreadCount, items]
+      properties:
+        unreadCount:
+          type: integer
+          minimum: 0
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopbarNotificationItem'
+    OrganizationActivityItem:
+      type: object
+      required: [id, title, description, time_label]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        time_label:
+          type: string
+    OrganizationDetail:
+      allOf:
+        - $ref: '#/components/schemas/OrganizationSummary'
+        - type: object
+          required:
+            - lifecycle_stage
+            - employee_count
+            - annual_revenue
+            - website
+            - phone
+            - billing_address
+            - service_address
+            - notes
+            - tags
+            - recent_activity
+          properties:
+            lifecycle_stage:
+              type: string
+              enum: [lead, prospect, customer, former_customer]
+            employee_count:
+              type: [integer, 'null']
+            annual_revenue:
+              type: [number, 'null']
+            website:
+              type: [string, 'null']
+              format: uri
+            phone:
+              type: [string, 'null']
+            billing_address:
+              type: [string, 'null']
+            service_address:
+              type: [string, 'null']
+            notes:
+              type: string
+            tags:
+              type: array
+              items:
+                type: string
+            recent_activity:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrganizationActivityItem'
+    OrganizationSummary:
+      type: object
+      required:
+        - id
+        - name
+        - status
+        - industry
+        - owner_name
+        - primary_contact_name
+        - primary_contact_email
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        industry:
+          type: [string, 'null']
+        owner_name:
+          type: [string, 'null']
+        primary_contact_name:
+          type: [string, 'null']
+        primary_contact_email:
+          type: [string, 'null']
+          format: email
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OrganizationListResponse:
+      type: object
+      required: [count, next, previous, results]
+      properties:
+        count:
+          type: integer
+        next:
+          type: [string, 'null']
+        previous:
+          type: [string, 'null']
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationSummary'
+    OrganizationCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+        status:
+          type: string
+          enum: [active, inactive]
+          default: active
+        industry:
+          type: [string, 'null']
+        primary_contact_name:
+          type: [string, 'null']
+        primary_contact_email:
+          type: [string, 'null']
+          format: email
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ValidationErrorResponse:
+      type: object
+      required: [code, message, errors]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
