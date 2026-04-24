@@ -915,7 +915,7 @@ The system must support leads as pre-client commercial opportunities.
 - track status and stage per state machine (Section 6.1)
 - convert lead into quote(s)
 
-### 11.3 Quote and Quote Versioning
+1### 11.3 Quote and Quote Versioning
 Quotes must support mixed commercial lines and multiple versions.
 
 #### Quote container model (resolved — LF-02)

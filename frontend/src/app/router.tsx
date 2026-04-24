@@ -4,9 +4,12 @@ import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom';
 import { AuthRequiredPage } from '@/features/auth/components/AuthRequiredPage';
 import { ProtectedLayout } from '@/features/auth/components/ProtectedLayout';
 import { sessionQueryOptions } from '@/features/auth/queries/session';
-import { OrganizationsListPage } from '@/features/organizations/pages/OrganizationsListPage';
 import { OrganizationDetailPage } from '@/features/organizations/pages/OrganizationDetailPage';
+import { OrganizationsListPage } from '@/features/organizations/pages/OrganizationsListPage';
 import { TenantProvider } from '@/features/tenant/TenantContext';
+import { LeadDetailPage } from '../features/leads/pages/LeadDetailPage';
+import { LeadsListPage } from '../features/leads/pages/LeadsListPage';
+import { OverviewPage } from '../features/overview/pages/OverviewPage';
 
 function RootRoute() {
   return (
@@ -14,10 +17,6 @@ function RootRoute() {
       <Outlet />
     </TenantProvider>
   );
-}
-
-function DashboardRedirect() {
-  return <Navigate to="/organizations" replace />;
 }
 
 function NotFoundPage() {
@@ -49,7 +48,7 @@ export function createAppRouter(queryClient: QueryClient) {
           children: [
             {
               index: true,
-              element: <DashboardRedirect />,
+              element: <OverviewPage />,
             },
             {
               path: 'organizations',
@@ -58,6 +57,14 @@ export function createAppRouter(queryClient: QueryClient) {
             {
               path: 'organizations/:organizationId',
               element: <OrganizationDetailPage />,
+            },
+            {
+              path: 'leads',
+              element: <LeadsListPage />,
+            },
+            {
+              path: 'leads/:leadId',
+              element: <LeadDetailPage />,
             },
           ],
         },
