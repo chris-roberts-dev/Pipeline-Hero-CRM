@@ -193,6 +193,66 @@ class RoleCapability(TenantModel):
         return f"{self.role.name} has {self.capability.code}"
 
 
+class MembershipRole(TenantModel):
+    """Assignment of a Role to a Membership.
+
+    Spec §10.2 step 4: capability evaluation walks the membership's roles
+    and unions their capability sets. This through table is the link.
+
+    Why an explicit through table (not Membership.roles M2M)?
+      - Carries the `organization` FK so the TenantManager coverage test
+        passes and tenant queries stay org-safe.
+      - Future-proofs for assignment metadata (assigned_by, assigned_at,
+        expires_at — not needed today, but the spec hints at temporary
+        role grants in the manager UI section).
+      - Lets us index (membership, role) for fast role-list lookups
+        during permission evaluation.
+
+    A membership can have multiple roles, and a role can be assigned to
+    multiple memberships within its organization. Cross-organization
+    assignments are blocked by the FK constraint pattern (both sides
+    carry the same `organization`) plus a clean check at the service
+    layer.
+    """
+
+    # `organization`, `created_at`, `updated_at` come from TenantModel.
+
+    membership = models.ForeignKey(
+        "organizations.Membership",
+        on_delete=models.CASCADE,
+        related_name="role_assignments",
+    )
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.PROTECT,  # don't allow deleting an in-use role
+        related_name="membership_assignments",
+    )
+
+    class Meta:
+        verbose_name = _("membership role assignment")
+        verbose_name_plural = _("membership role assignments")
+        ordering = ["-created_at"]
+        constraints = [
+            # A role assignment is unique per (membership, role). Two
+            # assignments of the same role to the same membership would
+            # have no semantic difference and would just add noise.
+            models.UniqueConstraint(
+                fields=["membership", "role"],
+                name="membership_role_unique",
+            ),
+        ]
+        indexes = [
+            # Evaluator hotspot: "all roles for this membership".
+            models.Index(
+                fields=["membership"],
+                name="mbr_role_membership_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.membership} → {self.role.name}"
+
+
 class MembershipCapabilityGrant(TenantModel):
     """A per-membership capability override.
 

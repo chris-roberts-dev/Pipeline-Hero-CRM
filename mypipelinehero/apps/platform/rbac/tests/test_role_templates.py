@@ -37,20 +37,14 @@ def test_templates_are_frozen():
 
 def test_sort_orders_are_unique():
     orders = [t.sort_order for t in SYSTEM_ROLE_TEMPLATES]
-    assert len(orders) == len(
-        set(orders)
-    ), f"Sort orders must be unique for predictable UI ordering. Got: {orders}"
+    assert len(orders) == len(set(orders)), (
+        f"Sort orders must be unique for predictable UI ordering. Got: {orders}"
+    )
 
 
 def test_broad_roles_resolve_to_all_capabilities():
     # Owner, Org Admin, and the three Managers all use ALL_CAPABILITIES.
-    broad_keys = {
-        "OWNER",
-        "ORG_ADMIN",
-        "REGIONAL_MANAGER",
-        "MARKET_MANAGER",
-        "LOCATION_MANAGER",
-    }
+    broad_keys = {"OWNER", "ORG_ADMIN", "REGIONAL_MANAGER", "MARKET_MANAGER", "LOCATION_MANAGER"}
     for template in SYSTEM_ROLE_TEMPLATES:
         if template.system_key in broad_keys:
             resolved = resolve_capability_codes(template)
@@ -61,9 +55,7 @@ def test_broad_roles_resolve_to_all_capabilities():
 
 
 def test_viewer_resolves_to_only_view_capabilities():
-    viewer = next(
-        t for t in SYSTEM_ROLE_TEMPLATES if t.system_key == Role.SystemKey.VIEWER
-    )
+    viewer = next(t for t in SYSTEM_ROLE_TEMPLATES if t.system_key == Role.SystemKey.VIEWER)
     resolved = resolve_capability_codes(viewer)
     # Every resolved code must end in .view...
     non_view = [c for c in resolved if not c.endswith(".view")]
@@ -74,9 +66,7 @@ def test_viewer_resolves_to_only_view_capabilities():
 
 
 def test_sales_staff_has_expected_capabilities():
-    sales = next(
-        t for t in SYSTEM_ROLE_TEMPLATES if t.system_key == Role.SystemKey.SALES_STAFF
-    )
+    sales = next(t for t in SYSTEM_ROLE_TEMPLATES if t.system_key == Role.SystemKey.SALES_STAFF)
     resolved = resolve_capability_codes(sales)
 
     # Spot checks per the spec: Sales Staff gets leads.*
@@ -92,9 +82,7 @@ def test_sales_staff_has_expected_capabilities():
 
 
 def test_service_staff_is_narrow():
-    service = next(
-        t for t in SYSTEM_ROLE_TEMPLATES if t.system_key == Role.SystemKey.SERVICE_STAFF
-    )
+    service = next(t for t in SYSTEM_ROLE_TEMPLATES if t.system_key == Role.SystemKey.SERVICE_STAFF)
     resolved = resolve_capability_codes(service)
     assert resolved == {
         "workorders.view",
@@ -107,9 +95,7 @@ def test_service_staff_is_narrow():
 
 def test_production_staff_is_narrow():
     production = next(
-        t
-        for t in SYSTEM_ROLE_TEMPLATES
-        if t.system_key == Role.SystemKey.PRODUCTION_STAFF
+        t for t in SYSTEM_ROLE_TEMPLATES if t.system_key == Role.SystemKey.PRODUCTION_STAFF
     )
     resolved = resolve_capability_codes(production)
     assert resolved == {
@@ -137,5 +123,4 @@ def test_template_with_unknown_capability_raises():
 def test_all_capabilities_marker_is_a_singleton():
     # Multiple imports shouldn't create distinct instances.
     from apps.platform.rbac.role_templates import ALL_CAPABILITIES as imported_again
-
     assert imported_again is ALL_CAPABILITIES

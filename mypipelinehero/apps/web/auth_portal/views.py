@@ -20,6 +20,7 @@ from django.shortcuts import redirect, render
 from apps.platform.accounts.services import user_can_access_org
 from apps.platform.audit.services import emit as audit_emit
 from apps.platform.organizations.models import Membership, Organization
+from apps.platform.rbac.decorators import no_capability_required
 from apps.web.auth_portal.forms import OrganizationPickerForm
 from apps.web.auth_portal.services import issue as issue_handoff_token
 
@@ -40,6 +41,10 @@ def _tenant_portal_url(organization: Organization, token: str, request: HttpRequ
     return f"{request.scheme}://{host}/auth/handoff?token={token}"
 
 
+@no_capability_required(
+    reason="Pre-tenant-context: user is choosing an org. No active membership "
+    "context exists yet to evaluate capabilities against."
+)
 @login_required(login_url="landing:login")
 def pick_organization(request: HttpRequest) -> HttpResponse:
     """Multi-org users choose which tenant to enter."""
@@ -77,6 +82,10 @@ def pick_organization(request: HttpRequest) -> HttpResponse:
     )
 
 
+@no_capability_required(
+    reason="Pre-tenant-context: minting handoff token for org user has already "
+    "been authorized to access. Membership check is in the service."
+)
 @login_required(login_url="landing:login")
 def issue_handoff(request: HttpRequest) -> HttpResponse:
     """Mint a handoff token for the selected org and redirect to tenant subdomain.

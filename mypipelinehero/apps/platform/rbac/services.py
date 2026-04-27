@@ -105,9 +105,7 @@ def seed_default_roles_for_org(organization: Organization) -> RoleSeedResult:
         # Current capability links for this role. Single query.
         existing_links = {
             rc.capability.code: rc
-            for rc in RoleCapability.objects.select_related("capability").filter(
-                role=role
-            )
+            for rc in RoleCapability.objects.select_related("capability").filter(role=role)
         }
 
         existing_codes = set(existing_links.keys())

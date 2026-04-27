@@ -1,0 +1,241 @@
+openapi: 3.1.0
+info:
+  title: MyPipelineHero Internal API
+  version: 0.1.0
+
+servers:
+  - url: /api/internal
+
+paths:
+  /health/:
+    get:
+      operationId: getHealth
+      tags:
+        - System
+      responses:
+        "200":
+          description: Mock health response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - mode
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  mode:
+                    type: string
+                    example: mock
+
+  /session/:
+    get:
+      operationId: getSession
+      tags:
+        - Session
+      responses:
+        "200":
+          description: Current session bootstrap data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionBootstrap"
+
+  /overview/:
+    get:
+      operationId: getTenantOverview
+      tags:
+        - Overview
+      responses:
+        "200":
+          description: Tenant overview dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantOverview"
+
+components:
+  schemas:
+    SessionBootstrap:
+      type: object
+      required:
+        - isAuthenticated
+        - user
+        - activeOrganization
+        - membership
+        - impersonation
+        - featureFlags
+      properties:
+        isAuthenticated:
+          type: boolean
+        user:
+          anyOf:
+            - $ref: "#/components/schemas/SessionUser"
+            - type: "null"
+        activeOrganization:
+          anyOf:
+            - $ref: "#/components/schemas/SessionOrganization"
+            - type: "null"
+        membership:
+          anyOf:
+            - $ref: "#/components/schemas/SessionMembership"
+            - type: "null"
+        impersonation:
+          anyOf:
+            - $ref: "#/components/schemas/SessionImpersonation"
+            - type: "null"
+        featureFlags:
+          type: object
+          additionalProperties:
+            type: boolean
+
+    SessionUser:
+      type: object
+      required:
+        - id
+        - email
+        - fullName
+        - isPlatformOwner
+        - isSupportUser
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+        avatarUrl:
+          anyOf:
+            - type: string
+            - type: "null"
+        isPlatformOwner:
+          type: boolean
+        isSupportUser:
+          type: boolean
+
+    SessionOrganization:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        tenantDomain:
+          anyOf:
+            - type: string
+            - type: "null"
+
+    SessionMembership:
+      type: object
+      required:
+        - roleNames
+        - capabilityCodes
+      properties:
+        roleNames:
+          type: array
+          items:
+            type: string
+        capabilityCodes:
+          type: array
+          items:
+            type: string
+
+    SessionImpersonation:
+      type: object
+      required:
+        - active
+      properties:
+        active:
+          type: boolean
+        originalActorId:
+          anyOf:
+            - type: string
+            - type: "null"
+        originalActorName:
+          anyOf:
+            - type: string
+            - type: "null"
+        reason:
+          anyOf:
+            - type: string
+            - type: "null"
+
+    TenantOverview:
+        type: object
+        required:
+          - metrics
+          - totalLeadsOverTime
+          - contactedLeadsOverTime
+        properties:
+          metrics:
+            type: array
+            items:
+              $ref: "#/components/schemas/OverviewMetric"
+          totalLeadsOverTime:
+            type: array
+            items:
+              $ref: "#/components/schemas/LeadTrendPoint"
+          contactedLeadsOverTime:
+            type: array
+            items:
+              $ref: "#/components/schemas/ContactedLeadTrendPoint"
+
+    OverviewMetric:
+        type: object
+        required:
+          - key
+          - label
+          - value
+          - helperText
+        properties:
+          key:
+            type: string
+            enum:
+              - newLeads
+              - qualifiedLeads
+              - contactedLeads
+              - activeLeads
+          label:
+            type: string
+          value:
+            type: number
+          helperText:
+            type: string
+
+    LeadTrendPoint:
+        type: object
+        required:
+          - label
+          - totalLeads
+          - averageSalesPrice
+        properties:
+          label:
+            type: string
+          totalLeads:
+            type: number
+          averageSalesPrice:
+            type: number
+
+    ContactedLeadTrendPoint:
+        type: object
+        required:
+          - label
+          - contactedLeads
+          - averageSalesPrice
+        properties:
+          label:
+            type: string
+          contactedLeads:
+            type: number
+          averageSalesPrice:
+            type: numberTenantOverview:
+        type: object

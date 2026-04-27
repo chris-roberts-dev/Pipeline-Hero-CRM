@@ -12,7 +12,7 @@ objects, no HTTP concerns.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from django.db import transaction
 
@@ -27,7 +27,7 @@ def create_organization(
     *,
     name: str,
     slug: str,
-    created_by: Any | None = None,
+    created_by: Optional[Any] = None,
     **extra_fields,
 ) -> Organization:
     """Create a new organization and seed its default roles atomically.

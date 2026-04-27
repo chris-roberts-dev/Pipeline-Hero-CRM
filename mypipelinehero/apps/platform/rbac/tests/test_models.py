@@ -216,7 +216,9 @@ class TestMembershipCapabilityGrant:
     def test_for_org_isolates_grants(self, org_a, org_b, user):
         # Create membership in each org, attach a grant to each, verify
         # queryset scoping still works end-to-end.
-        mem_a = Membership.objects.get(user=user, organization=org_a)
+        mem_a = Membership.objects.create(
+            user=user, organization=org_a, status=Membership.Status.ACTIVE
+        )
         mem_b = Membership.objects.create(
             user=user, organization=org_b, status=Membership.Status.ACTIVE
         )

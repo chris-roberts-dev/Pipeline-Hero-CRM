@@ -19,6 +19,7 @@ from django.shortcuts import redirect, render
 
 from apps.common.services import AuthenticationError, ValidationError
 from apps.platform.audit.services import emit as audit_emit
+from apps.platform.rbac.decorators import no_capability_required
 from apps.web.tenant_portal.services import complete_handoff
 
 
@@ -34,6 +35,10 @@ def _require_tenant(request: HttpRequest):
     return org
 
 
+@no_capability_required(
+    reason="Pre-tenant-session: token consumption establishes the session. "
+    "Membership re-validation happens in the service."
+)
 def handoff_completion(request: HttpRequest) -> HttpResponse:
     """Consume a handoff token and establish a tenant-local session.
 
@@ -84,6 +89,10 @@ def handoff_completion(request: HttpRequest) -> HttpResponse:
     return redirect("tenant_portal:dashboard")
 
 
+@no_capability_required(
+    reason="Tenant landing stub. M2 step 6 will introduce a dashboard "
+    "capability or remove this view entirely in favor of a routed home."
+)
 def dashboard(request: HttpRequest) -> HttpResponse:
     """Minimal landing page inside a tenant portal."""
     organization = _require_tenant(request)
@@ -112,6 +121,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     )
 
 
+@no_capability_required(reason="Authenticated logout; cap gate would prevent escape.")
 def tenant_logout(request: HttpRequest) -> HttpResponse:
     """Tenant-local logout.
 

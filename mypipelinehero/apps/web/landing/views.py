@@ -16,6 +16,7 @@ from django.urls import reverse
 from apps.common.services import AuthenticationError
 from apps.platform.accounts.services import login_with_password
 from apps.platform.audit.services import emit as audit_emit
+from apps.platform.rbac.decorators import no_capability_required
 from apps.web.auth_portal.forms import LoginForm
 
 
@@ -38,6 +39,7 @@ def _reject_tenant_subdomain(request: HttpRequest) -> HttpResponse | None:
     return None
 
 
+@no_capability_required(reason="Pre-authentication: login form. Cap gate would be circular.")
 def login_view(request: HttpRequest) -> HttpResponse:
     """GET: render the login form. POST: authenticate and route."""
     if (redirect_resp := _reject_tenant_subdomain(request)) is not None:
@@ -97,16 +99,21 @@ def login_view(request: HttpRequest) -> HttpResponse:
     return render(request, "landing/no_access.html", status=403)
 
 
+@no_capability_required(
+    reason="Placeholder; M2 will introduce a platform-staff capability and gate this."
+)
 def platform_console_placeholder(request: HttpRequest) -> HttpResponse:
     """Placeholder target for platform users until M2 builds the real console."""
     return render(request, "landing/platform_console_placeholder.html")
 
 
+@no_capability_required(reason="Authenticated dead-end page; user has no org access.")
 def no_access_view(request: HttpRequest) -> HttpResponse:
     """Rendered when an authenticated user has no accessible org and isn't staff."""
     return render(request, "landing/no_access.html", status=403)
 
 
+@no_capability_required(reason="Authenticated logout; cap gate would prevent escape.")
 def logout_view(request: HttpRequest) -> HttpResponse:
     """Root-domain logout.
 

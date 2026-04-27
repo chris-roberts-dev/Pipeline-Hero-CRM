@@ -38,7 +38,7 @@ Owner vs Org Admin:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from apps.platform.rbac.capabilities import CAPABILITIES, all_codes
 from apps.platform.rbac.models import Role
@@ -83,30 +83,17 @@ class SystemRoleTemplate:
 # tasks.view/create/edit, communications.view/log, orders.view, catalog.view.
 _SALES_STAFF_CAPS = {
     # Every leads.* capability
-    "leads.view",
-    "leads.create",
-    "leads.edit",
-    "leads.edit_any",
-    "leads.archive",
-    "leads.convert",
-    "leads.assign",
+    "leads.view", "leads.create", "leads.edit", "leads.edit_any",
+    "leads.archive", "leads.convert", "leads.assign",
     # Selective quotes
-    "quotes.view",
-    "quotes.create",
-    "quotes.edit",
-    "quotes.send",
+    "quotes.view", "quotes.create", "quotes.edit", "quotes.send",
     # Selective clients
-    "clients.view",
-    "clients.create",
-    "clients.edit",
+    "clients.view", "clients.create", "clients.edit",
     # Selective tasks
-    "tasks.view",
-    "tasks.create",
-    "tasks.edit",
+    "tasks.view", "tasks.create", "tasks.edit",
     # Communications (log only, not send — salespeople log manual
     # interactions; outbound send is a separate action)
-    "communications.view",
-    "communications.log",
+    "communications.view", "communications.log",
     # Read-only orders + catalog
     "orders.view",
     "catalog.view",
@@ -267,9 +254,7 @@ def resolve_capability_codes(template: SystemRoleTemplate) -> set[str]:
 _system_keys = [t.system_key for t in SYSTEM_ROLE_TEMPLATES]
 if len(_system_keys) != len(set(_system_keys)):
     dupes = {k for k in _system_keys if _system_keys.count(k) > 1}
-    raise RuntimeError(
-        f"Duplicate system_key values in role templates: {sorted(dupes)}"
-    )
+    raise RuntimeError(f"Duplicate system_key values in role templates: {sorted(dupes)}")
 
 # Every enum value in Role.SystemKey must have a matching template.
 # Catches the case where someone adds an enum value but forgets the template.

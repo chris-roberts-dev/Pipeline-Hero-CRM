@@ -13,7 +13,10 @@ are simply unreachable on a tenant subdomain and vice versa.
 from django.http import JsonResponse
 from django.urls import include, path
 
+from apps.platform.rbac.decorators import no_capability_required
 
+
+@no_capability_required(reason="Liveness probe; must remain accessible from any context.")
 def healthz(_request):
     return JsonResponse({"status": "ok"})
 
