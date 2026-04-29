@@ -39,7 +39,9 @@ def _reject_tenant_subdomain(request: HttpRequest) -> HttpResponse | None:
     return None
 
 
-@no_capability_required(reason="Pre-authentication: login form. Cap gate would be circular.")
+@no_capability_required(
+    reason="Pre-authentication: login form. Cap gate would be circular."
+)
 def login_view(request: HttpRequest) -> HttpResponse:
     """GET: render the login form. POST: authenticate and route."""
     if (redirect_resp := _reject_tenant_subdomain(request)) is not None:
@@ -91,20 +93,13 @@ def login_view(request: HttpRequest) -> HttpResponse:
         return redirect("auth_portal:pick_organization")
 
     if result.is_platform_user:
-        # Platform user with no org memberships — M2 will point this at the
-        # platform console. For now, a placeholder page.
-        return redirect("landing:platform_console")
+        # Platform user (is_staff or is_superuser): land in the platform
+        # admin console. The console's `staff_member_required` gate
+        # handles the secondary auth check there.
+        return redirect("console:index")
 
     # No memberships, no platform access — dead end. Render a friendly error.
     return render(request, "landing/no_access.html", status=403)
-
-
-@no_capability_required(
-    reason="Placeholder; M2 will introduce a platform-staff capability and gate this."
-)
-def platform_console_placeholder(request: HttpRequest) -> HttpResponse:
-    """Placeholder target for platform users until M2 builds the real console."""
-    return render(request, "landing/platform_console_placeholder.html")
 
 
 @no_capability_required(reason="Authenticated dead-end page; user has no org access.")
@@ -134,4 +129,10 @@ def logout_view(request: HttpRequest) -> HttpResponse:
             actor_user=actor,
             request=request,
         )
-    return redirect("landing:login")
+    # Redirect to the root URL. Today this returns a 404 because nothing
+    # is mounted at "/" on the root domain — that's intentional. The
+    # marketing/landing page lands later (likely as a Phase 2 React
+    # frontend or a Django-served placeholder); for now, "/" is the
+    # documented post-logout destination and a 404 there is a known
+    # interim state, not a routing bug.
+    return redirect("/")

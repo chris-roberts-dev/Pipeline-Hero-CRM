@@ -1,13 +1,14 @@
+import { AppProviders } from '@app/providers/AppProviders';
+import { router } from '@app/router';
+import '@styles/index.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
-import { AppProviders } from './app/providers/AppProviders';
-import { router } from './app/router';
-import './styles/index.css';
 
 async function enableMocks() {
   if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MSW === 'true') {
-    const { worker } = await import('./mocks/browser');
+    const { worker } = await import('@mocks/browser');
+
     await worker.start({
       onUnhandledRequest: 'bypass',
     });

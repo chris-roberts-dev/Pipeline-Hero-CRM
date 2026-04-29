@@ -18,6 +18,9 @@
     </style>
 </head>
 <body>
+    {# Impersonation banner — visible at the top of every page during an active session. #}
+    {% include "support/_banner.html" %}
+
     {% if messages %}
         <div class="container mt-3">
             {% for message in messages %}

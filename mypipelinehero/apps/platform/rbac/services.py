@@ -105,7 +105,9 @@ def seed_default_roles_for_org(organization: Organization) -> RoleSeedResult:
         # Current capability links for this role. Single query.
         existing_links = {
             rc.capability.code: rc
-            for rc in RoleCapability.objects.select_related("capability").filter(role=role)
+            for rc in RoleCapability.objects.select_related("capability").filter(
+                role=role
+            )
         }
 
         existing_codes = set(existing_links.keys())
@@ -142,3 +144,153 @@ def seed_default_roles_for_org(organization: Organization) -> RoleSeedResult:
         capability_links_created=links_created,
         capability_links_removed=links_removed,
     )
+
+
+# ---------------------------------------------------------------------------
+# Role assignment / scope assignment services
+# ---------------------------------------------------------------------------
+# Per spec §7.2A line 735: scoped Manager roles require a matching scope
+# assignment. Enforced at the service layer to prevent inconsistent state.
+
+# Mirrored from evaluator._SCOPED_ROLE_KEYS — keep in sync. We don't import
+# from evaluator here because the dependency direction is services → models,
+# and the evaluator imports services (transitively). Duplicating the small
+# constant avoids the cycle.
+_SCOPED_ROLE_KEYS = frozenset(
+    {
+        "REGIONAL_MANAGER",
+        "MARKET_MANAGER",
+        "LOCATION_MANAGER",
+    }
+)
+
+
+@transaction.atomic
+def assign_role_to_membership(*, membership, role) -> MembershipRole:
+    """Assign `role` to `membership`, enforcing the scope invariant.
+
+    Raises:
+        ValidationError: if `role` is a scoped Manager role and the
+            membership has no scope assignments.
+        ValidationError: if role and membership are in different
+            organizations (defense against cross-tenant assignment).
+
+    Idempotent: re-assigning an already-assigned role is a no-op (returns
+    the existing assignment row).
+    """
+    from apps.common.services import ValidationError
+    from apps.platform.rbac.models import MembershipRole
+
+    # Tenant safety: roles and memberships must be in the same org.
+    if role.organization_id != membership.organization_id:
+        raise ValidationError("Cannot assign a role from a different organization.")
+
+    # Spec §7.2A line 735: scoped roles require a scope assignment.
+    if role.system_key in _SCOPED_ROLE_KEYS:
+        if not membership.scope_assignments.exists():
+            raise ValidationError(
+                f"Role '{role.name}' requires at least one operating-scope "
+                f"assignment on the membership before it can be assigned."
+            )
+
+    assignment, _ = MembershipRole.objects.get_or_create(
+        organization=membership.organization,
+        membership=membership,
+        role=role,
+    )
+    return assignment
+
+
+@transaction.atomic
+def remove_role_from_membership(*, membership, role) -> bool:
+    """Remove a role assignment. Returns True if a row was deleted."""
+    from apps.platform.rbac.models import MembershipRole
+
+    deleted, _ = MembershipRole.objects.filter(
+        membership=membership, role=role
+    ).delete()
+    return deleted > 0
+
+
+@transaction.atomic
+def add_scope_assignment(
+    *,
+    membership,
+    region=None,
+    market=None,
+    location=None,
+    reason: str = "",
+) -> MembershipScopeAssignment:
+    """Add a scope assignment to a membership.
+
+    Exactly one of `region`, `market`, or `location` must be provided.
+    The DB CHECK constraint enforces this too, but raising here gives a
+    clearer error than an IntegrityError.
+
+    Raises:
+        ValidationError: if zero or more-than-one targets provided, or
+            target's organization differs from membership's.
+    """
+    from apps.common.services import ValidationError
+    from apps.platform.rbac.models import MembershipScopeAssignment
+
+    targets = [t for t in (region, market, location) if t is not None]
+    if len(targets) != 1:
+        raise ValidationError(
+            "Exactly one of region, market, or location must be provided."
+        )
+
+    target = targets[0]
+    if target.organization_id != membership.organization_id:
+        raise ValidationError(
+            "Scope target must belong to the same organization as the membership."
+        )
+
+    return MembershipScopeAssignment.objects.create(
+        organization=membership.organization,
+        membership=membership,
+        region=region,
+        market=market,
+        location=location,
+        reason=reason,
+    )
+
+
+@transaction.atomic
+def remove_scope_assignment(*, assignment) -> None:
+    """Remove a scope assignment, blocking removal if it would orphan
+    a scoped role on the membership.
+
+    Spec §7.2A line 735 implication: a Manager role without scope
+    assignments grants no data access. We could allow the orphan and
+    let the evaluator's defense-in-depth cover it, but the better UX
+    is to surface the inconsistency at the time of attempted removal.
+
+    Raises:
+        ValidationError: if removing this assignment would leave the
+            membership with a scoped role and no other scope assignments.
+    """
+    from apps.common.services import ValidationError
+    from apps.platform.rbac.models import MembershipRole
+
+    membership = assignment.membership
+
+    # If this isn't the last scope assignment, removal is always fine.
+    if membership.scope_assignments.exclude(pk=assignment.pk).exists():
+        assignment.delete()
+        return
+
+    # Last scope assignment. Check for scoped roles.
+    has_scoped_role = MembershipRole.objects.filter(
+        membership=membership,
+        role__system_key__in=_SCOPED_ROLE_KEYS,
+    ).exists()
+
+    if has_scoped_role:
+        raise ValidationError(
+            "Cannot remove the last scope assignment while a scoped "
+            "Manager role is still assigned. Remove the role first, or "
+            "add another scope assignment before removing this one."
+        )
+
+    assignment.delete()

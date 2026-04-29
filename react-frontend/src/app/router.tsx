@@ -1,3 +1,5 @@
+import { LeadDetailPage } from '@features/leads/pages/LeadDetailPage';
+import { LeadsListPage } from '@features/leads/pages/LeadsListPage';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LoginRedirectPage } from '../features/auth/pages/LoginRedirectPage';
 import { LandingPage } from '../features/landing/pages/LandingPage';
@@ -28,6 +30,14 @@ export const router = createBrowserRouter([
         index: true,
         element: <OverviewPage />,
       },
+    {
+      path: 'leads',
+      element: <LeadsListPage />,
+    },
+    {
+      path: 'leads/:leadId',
+      element: <LeadDetailPage />,
+    },
       {
         path: '*',
         element: <Navigate to="/app" replace />,

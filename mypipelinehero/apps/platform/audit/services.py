@@ -27,7 +27,7 @@ fine — we don't want audit entries for actions that never happened).
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from django.http import HttpRequest
 
@@ -37,14 +37,14 @@ from apps.platform.audit.models import AuditEvent
 def emit(
     *,
     event_type: str,
-    actor_user: Optional[Any] = None,
-    on_behalf_of_user: Optional[Any] = None,
-    organization: Optional[Any] = None,
-    target: Optional[tuple[str, Any]] = None,
-    before: Optional[dict] = None,
-    after: Optional[dict] = None,
-    metadata: Optional[dict] = None,
-    request: Optional[HttpRequest] = None,
+    actor_user: Any | None = None,
+    on_behalf_of_user: Any | None = None,
+    organization: Any | None = None,
+    target: tuple[str, Any] | None = None,
+    before: dict | None = None,
+    after: dict | None = None,
+    metadata: dict | None = None,
+    request: HttpRequest | None = None,
 ) -> AuditEvent:
     """Record an auditable action.
 
@@ -76,6 +76,16 @@ def emit(
     if request is not None:
         ip_address = _client_ip(request)
         user_agent = request.META.get("HTTP_USER_AGENT", "")[:256]
+
+        # Auto-resolve impersonation context from the request if the caller
+        # didn't explicitly pass on_behalf_of_user. This means every
+        # service-layer emit() during an impersonation session correctly
+        # records both identities without each caller having to remember.
+        # The middleware (rbac.middleware.ActingMembershipMiddleware) sets
+        # `request.impersonation_target_user` when an impersonation session
+        # is active; otherwise the attribute is absent (None).
+        if on_behalf_of_user is None:
+            on_behalf_of_user = getattr(request, "impersonation_target_user", None)
 
     return AuditEvent.objects.create(
         event_type=event_type,

@@ -45,6 +45,11 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
+# Restrict test discovery to apps/. Without this, pytest walks the whole
+# project tree including templates/, static/, and node_modules-equivalents
+# — slow and prone to permission errors on bind-mounted volumes when an
+# extracted file has restrictive permissions.
+testpaths = ["apps"]
 # fail-fast on collection errors; readable output; show slowest 5
 addopts = "-ra --strict-markers --tb=short --durations=5"
 markers = [

@@ -15,6 +15,9 @@ export function PublicLayout() {
           <a href="#workflow" className="hover:text-white">
             Workflow
           </a>
+          <a href="#pricing" className="hover:text-white">
+            Pricing
+          </a>
           <Link
             to="/login"
             className="rounded-lg bg-mph-primary px-4 py-2 font-semibold text-white hover:bg-mph-primary-dark"

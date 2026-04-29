@@ -13,11 +13,9 @@ import pytest
 
 from apps.platform.rbac.capabilities import (
     CAPABILITIES,
-    CapabilitySpec,
     all_codes,
     by_domain,
 )
-
 
 # Pattern from spec §10.3: codes follow `{domain}.{resource}.{action}`
 # but note some entries in the spec only have two segments (e.g.
@@ -36,7 +34,7 @@ def test_expected_capability_count():
     # Pinning the count so accidental drops or additions surface in code
     # review. If you legitimately add/remove capabilities, update this
     # number in the same commit.
-    assert len(CAPABILITIES) == 84
+    assert len(CAPABILITIES) == 86
 
 
 def test_all_codes_match_pattern():
@@ -80,11 +78,25 @@ def test_by_domain_groups_all_entries():
 
 
 def test_expected_domains_present():
-    # Sanity check: we have all 13 expected domains from spec §10.3.
+    # Sanity check: we have all 14 expected domains. Originally 13 from
+    # spec §10.3 plus 'support' added in M2 step 5 for cross-tenant
+    # platform-staff capabilities (impersonation, etc.) — these aren't
+    # tenant-business domains but live in the same registry.
     expected_domains = {
-        "leads", "quotes", "clients", "orders", "catalog",
-        "workorders", "purchasing", "build", "billing",
-        "tasks", "communications", "reporting", "admin",
+        "leads",
+        "quotes",
+        "clients",
+        "orders",
+        "catalog",
+        "workorders",
+        "purchasing",
+        "build",
+        "billing",
+        "tasks",
+        "communications",
+        "reporting",
+        "admin",
+        "support",
     }
     assert set(by_domain().keys()) == expected_domains
 
@@ -93,7 +105,7 @@ def test_highest_trust_codes_are_present():
     # Spot-check a few capabilities that would be embarrassing to miss.
     codes = set(all_codes())
     must_exist = {
-        "quotes.approve",           # quote acceptance — spec §10.3 "highest-trust"
+        "quotes.approve",  # quote acceptance — spec §10.3 "highest-trust"
         "quotes.line.override_price",
         "billing.invoice.void",
         "billing.payment.edit",

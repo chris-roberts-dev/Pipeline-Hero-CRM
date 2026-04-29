@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Access denied · MyPipelineHero</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 32rem;
+            margin: 4rem auto;
+            padding: 0 1.5rem;
+            color: #1f2937;
+            line-height: 1.5;
+        }
+        h1 {
+            font-size: 1.75rem;
+            margin-bottom: 0.5rem;
+        }
+        .reason {
+            background: #fef3c7;
+            border-left: 3px solid #f59e0b;
+            padding: 0.75rem 1rem;
+            margin: 1.5rem 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.875rem;
+            color: #78350f;
+        }
+        a {
+            color: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <h1>Access denied</h1>
+    <p>You do not have permission to perform this action.</p>
+    {% if reason %}
+        <p class="reason">{{ reason }}</p>
+    {% endif %}
+    <p>
+        If you believe this is in error, contact your organization administrator.
+    </p>
+    <p>
+        <a href="/">Return home</a>
+    </p>
+</body>
+</html>

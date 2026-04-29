@@ -1,0 +1,47 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}Start Impersonation Session{% endblock %}
+
+{% block content %}
+<div id="content-main" style="max-width: 48rem;">
+    <p style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 1rem; color: #78350f;">
+        <strong>You are about to start an impersonation session.</strong>
+        Every action you take during this session will be recorded with both your
+        identity AND the target user's identity. The target user's organization
+        admins can see this session in their audit trail.
+    </p>
+
+    <form method="post">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div style="background: #fee2e2; border-left: 3px solid #b91c1c; padding: 0.75rem 1rem; color: #991b1b; margin-bottom: 1rem;">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <fieldset class="module aligned">
+            {% for field in form %}
+                <div class="form-row">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+                    {{ field }}
+                    {% if field.help_text %}
+                        <p class="help">{{ field.help_text }}</p>
+                    {% endif %}
+                    {% if field.errors %}
+                        <ul class="errorlist">
+                            {% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+                        </ul>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </fieldset>
+
+        <div class="submit-row">
+            <input type="submit" value="Start session" class="default">
+            <a href="{% url 'console:support_impersonationsession_changelist' %}"
+               style="margin-left: 1rem; line-height: 2.4em;">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -43,6 +43,7 @@ def _clear_handoff_redis():
 @pytest.fixture(autouse=True)
 def _clear_cache():
     from django.core.cache import cache
+
     cache.clear()
     yield
     cache.clear()
@@ -90,9 +91,7 @@ class TestSingleOrgFlow:
         # With a token query param.
         assert "token" in parse_qs(parsed.query)
 
-    def test_tenant_handoff_completion_establishes_session(
-        self, user, org, membership
-    ):
+    def test_tenant_handoff_completion_establishes_session(self, user, org, membership):
         # 1. Login on root
         c = Client(HTTP_HOST="mypipelinehero.localhost")
         c.post("/login/", {"email": user.email, "password": PASSWORD})
@@ -186,10 +185,52 @@ class TestAuthFailureModes:
 
 
 @pytest.mark.django_db
+class TestPlatformUserRouting:
+    """Spec: a logged-in user with is_staff or is_superuser (and no
+    tenant memberships) should land in the platform admin console."""
+
+    def test_superuser_with_no_memberships_redirects_to_admin(self, db):
+        admin_user = User.objects.create_superuser(
+            email="root@example.com",
+            password=PASSWORD,
+        )
+        client = Client(HTTP_HOST="mypipelinehero.localhost")
+        resp = client.post("/login/", {"email": admin_user.email, "password": PASSWORD})
+        assert resp.status_code == 302
+        # Lands at the console index. We accept either a relative or
+        # absolute URL since redirect() may emit either.
+        assert resp["Location"].endswith("/admin/")
+
+    def test_staff_user_with_no_memberships_redirects_to_admin(self, db):
+        # is_staff alone (without is_superuser) is also a "platform user"
+        # per is_platform_user. Same routing.
+        staff_user = User.objects.create_user(
+            email="staff@example.com",
+            password=PASSWORD,
+            is_staff=True,
+        )
+        client = Client(HTTP_HOST="mypipelinehero.localhost")
+        resp = client.post("/login/", {"email": staff_user.email, "password": PASSWORD})
+        assert resp.status_code == 302
+        assert resp["Location"].endswith("/admin/")
+
+
+@pytest.mark.django_db
 class TestLogoutSemantics:
-    def test_root_logout_does_not_affect_tenant_session(
-        self, user, org, membership
-    ):
+    def test_root_logout_redirects_to_root_url(self, user, org, membership):
+        """Logout lands the user at "/" (root URL) for the post-logout
+        marketing/landing experience. Today "/" 404s because nothing is
+        mounted there — that's expected interim state until a public
+        landing page ships. The important thing is the destination URL,
+        which this test pins."""
+        root = Client(HTTP_HOST="mypipelinehero.localhost")
+        root.post("/login/", {"email": user.email, "password": PASSWORD})
+
+        resp = root.get("/logout/")
+        assert resp.status_code == 302
+        assert resp["Location"] == "/"
+
+    def test_root_logout_does_not_affect_tenant_session(self, user, org, membership):
         """Spec §9.4: root-domain logout terminates only the root session."""
         root = Client(HTTP_HOST="mypipelinehero.localhost")
         root.post("/login/", {"email": user.email, "password": PASSWORD})

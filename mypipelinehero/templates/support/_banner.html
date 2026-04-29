@@ -1,0 +1,48 @@
+{% comment %}
+Impersonation banner.
+
+Include this in any base template that may be reached during impersonation.
+The context variable `impersonation` is set by the support context
+processor; if None, this partial renders nothing.
+
+Usage:
+    {% include "support/_banner.html" %}
+
+Place near the top of <body> so it's always visible.
+{% endcomment %}
+
+{% if impersonation %}
+<div role="alert" aria-live="assertive" style="
+    background: #b91c1c;
+    color: white;
+    padding: 0.75rem 1rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 0.875rem;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 9999;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+">
+    <strong>Impersonation active.</strong>
+    You are signed in as
+    <strong>{{ impersonation.target_user.email }}</strong>
+    via support session
+    (started by <strong>{{ impersonation.support_user.email }}</strong>).
+    {# Server-rendered countdown — no JS dependency. #}
+    Session ends at {{ impersonation.ends_at|date:"H:i" }} UTC.
+    <form method="post" action="{% url 'support:end_impersonation' %}"
+          style="display: inline-block; margin-left: 1rem;">
+        {% csrf_token %}
+        <button type="submit" style="
+            background: white;
+            color: #b91c1c;
+            border: 0;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            font-weight: bold;
+            cursor: pointer;
+        ">End impersonation</button>
+    </form>
+</div>
+{% endif %}

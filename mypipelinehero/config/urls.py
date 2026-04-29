@@ -13,16 +13,23 @@ are simply unreachable on a tenant subdomain and vice versa.
 from django.http import JsonResponse
 from django.urls import include, path
 
+from apps.platform.console.sites import console_site
 from apps.platform.rbac.decorators import no_capability_required
 
 
-@no_capability_required(reason="Liveness probe; must remain accessible from any context.")
+@no_capability_required(
+    reason="Liveness probe; must remain accessible from any context."
+)
 def healthz(_request):
     return JsonResponse({"status": "ok"})
 
 
 urlpatterns = [
     path("healthz", healthz, name="healthz"),
+    # Custom platform AdminSite. Mounted on the root domain only —
+    # tenant subdomains do not expose the admin. The site instance is
+    # populated at app-ready time via apps.platform.console.apps.ready().
+    path("admin/", console_site.urls),
     path("", include("apps.web.landing.urls")),
     path("", include("apps.web.auth_portal.urls")),
 ]
@@ -34,6 +41,7 @@ urlpatterns = [
 # is disabled — the URLs just sit unused.
 try:
     import debug_toolbar  # noqa: F401
+
     urlpatterns += [path("__debug__/", include("debug_toolbar.urls"))]
 except ImportError:
     pass

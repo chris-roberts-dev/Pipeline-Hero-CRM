@@ -56,6 +56,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/TenantOverview"
 
+  /leads/:
+    get:
+      operationId: listLeads
+      tags:
+        - Leads
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/LeadStatus"
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/LeadSource"
+        - name: ownerId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lead list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadListResponse"
+
+    post:
+      operationId: createLead
+      tags:
+        - Leads
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeadPayload"
+      responses:
+        "201":
+          description: Created lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{leadId}/:
+    get:
+      operationId: getLead
+      tags:
+        - Leads
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lead detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+
 components:
   schemas:
     SessionBootstrap:
@@ -239,3 +312,263 @@ components:
           averageSalesPrice:
             type: numberTenantOverview:
         type: object
+
+    LeadStatus:
+      type: string
+      enum:
+        - New
+        - Contacted
+        - Qualified
+        - Unqualified
+        - Converted
+        - Archived
+
+    LeadPriority:
+      type: string
+      enum:
+        - Low
+        - Medium
+        - High
+        - Urgent
+
+    LeadSource:
+      type: string
+      enum:
+        - Website
+        - Referral
+        - Trade Show
+        - Cold Outreach
+        - Inbound Call
+        - Partner
+        - Existing Client
+
+    LeadOwner:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    LeadContact:
+      type: object
+      required:
+        - id
+        - leadId
+        - name
+        - email
+        - phone
+        - roleTitle
+      properties:
+        id:
+          type: string
+        leadId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        roleTitle:
+          type: string
+
+    LeadLocation:
+      type: object
+      required:
+        - id
+        - leadId
+        - addressLine1
+        - city
+        - state
+        - postalCode
+      properties:
+        id:
+          type: string
+        leadId:
+          type: string
+        addressLine1:
+          type: string
+        addressLine2:
+          anyOf:
+            - type: string
+            - type: "null"
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        locationNotes:
+          anyOf:
+            - type: string
+            - type: "null"
+
+    Lead:
+      type: object
+      required:
+        - id
+        - organizationId
+        - region
+        - market
+        - location
+        - leadNumber
+        - source
+        - status
+        - owner
+        - companyName
+        - opportunityName
+        - estimatedSalesPrice
+        - priority
+        - summary
+        - createdAt
+        - updatedAt
+        - contacts
+        - locations
+      properties:
+        id:
+          type: string
+        organizationId:
+          type: string
+        region:
+          anyOf:
+            - type: string
+            - type: "null"
+        market:
+          anyOf:
+            - type: string
+            - type: "null"
+        location:
+          anyOf:
+            - type: string
+            - type: "null"
+        leadNumber:
+          type: string
+        source:
+          $ref: "#/components/schemas/LeadSource"
+        status:
+          $ref: "#/components/schemas/LeadStatus"
+        owner:
+          $ref: "#/components/schemas/LeadOwner"
+        companyName:
+          type: string
+        opportunityName:
+          type: string
+        estimatedSalesPrice:
+          type: number
+        priority:
+          $ref: "#/components/schemas/LeadPriority"
+        summary:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeadContact"
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeadLocation"
+
+    LeadListResponse:
+      type: object
+      required:
+        - count
+        - results
+      properties:
+        count:
+          type: number
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lead"
+
+    CreateLeadPayload:
+      type: object
+      required:
+        - companyName
+        - opportunityName
+        - source
+        - ownerName
+        - estimatedSalesPrice
+        - priority
+        - summary
+        - contact
+        - locationAddress
+      properties:
+        companyName:
+          type: string
+        opportunityName:
+          type: string
+        source:
+          $ref: "#/components/schemas/LeadSource"
+        ownerName:
+          type: string
+        region:
+          anyOf:
+            - type: string
+            - type: "null"
+        market:
+          anyOf:
+            - type: string
+            - type: "null"
+        location:
+          anyOf:
+            - type: string
+            - type: "null"
+        estimatedSalesPrice:
+          type: number
+        priority:
+          $ref: "#/components/schemas/LeadPriority"
+        summary:
+          type: string
+        contact:
+          type: object
+          required:
+            - name
+            - email
+            - phone
+            - roleTitle
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+              format: email
+            phone:
+              type: string
+            roleTitle:
+              type: string
+        locationAddress:
+          type: object
+          required:
+            - addressLine1
+            - city
+            - state
+            - postalCode
+          properties:
+            addressLine1:
+              type: string
+            addressLine2:
+              anyOf:
+                - type: string
+                - type: "null"
+            city:
+              type: string
+            state:
+              type: string
+            postalCode:
+              type: string
+            locationNotes:
+              anyOf:
+                - type: string
+                - type: "null"

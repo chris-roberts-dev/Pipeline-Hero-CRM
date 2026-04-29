@@ -1,6 +1,6 @@
+import { useSession } from '@features/session/useSession';
+import { apiFetch } from '@lib/api/client';
 import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '../../../lib/api/client';
-import { useSession } from '../../session/useSession';
 
 type HealthResponse = {
   status: string;
@@ -54,14 +54,14 @@ export function DashboardPage() {
           <p className="text-sm font-medium text-slate-500">Mock API</p>
 
           {healthQuery.isLoading ? (
-            <p className="mt-2 text-slate-500">Checking...</p>
-          ) : healthQuery.isError ? (
-            <p className="mt-2 text-red-600">Unavailable</p>
-          ) : (
-            <p className="mt-2 text-lg font-semibold text-slate-900">
-              {healthQuery.data.status} · {healthQuery.data.mode}
-            </p>
-          )}
+  <p className="mt-2 text-slate-500">Checking...</p>
+) : healthQuery.isError || !healthQuery.data ? (
+  <p className="mt-2 text-red-600">Unavailable</p>
+) : (
+  <p className="mt-2 text-lg font-semibold text-slate-900">
+    {healthQuery.data.status} · {healthQuery.data.mode}
+  </p>
+)}
         </section>
       </div>
 

@@ -54,7 +54,9 @@ class Capability(models.Model):
         max_length=80,
         unique=True,
         db_index=True,
-        help_text=_("Capability code, e.g. 'leads.view'. Follows {domain}.{resource}.{action}."),
+        help_text=_(
+            "Capability code, e.g. 'leads.view'. Follows {domain}.{resource}.{action}."
+        ),
     )
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
@@ -118,7 +120,9 @@ class Role(TenantModel):
         choices=SystemKey.choices,
         blank=True,
         null=True,
-        help_text=_("Identifies the default-role template. Null on tenant-custom roles."),
+        help_text=_(
+            "Identifies the default-role template. Null on tenant-custom roles."
+        ),
     )
 
     capabilities = models.ManyToManyField(
@@ -164,10 +168,12 @@ class RoleCapability(TenantModel):
 
     # `organization`, `created_at`, `updated_at` come from TenantModel.
 
-    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="role_capabilities")
+    role = models.ForeignKey(
+        Role, on_delete=models.CASCADE, related_name="role_capabilities"
+    )
     capability = models.ForeignKey(
         Capability,
-        on_delete=models.PROTECT,      # capabilities are system data; never delete
+        on_delete=models.PROTECT,  # capabilities are system data; never delete
         related_name="role_assignments",
     )
 
@@ -286,7 +292,9 @@ class MembershipCapabilityGrant(TenantModel):
     grant_type = models.CharField(
         max_length=8,
         choices=GrantType.choices,
-        help_text=_("GRANT adds the capability; DENY removes it (overrides role grants)."),
+        help_text=_(
+            "GRANT adds the capability; DENY removes it (overrides role grants)."
+        ),
     )
 
     # Free-form rationale, shown in audit events and UI. Not required but
@@ -318,3 +326,141 @@ class MembershipCapabilityGrant(TenantModel):
 
     def __str__(self) -> str:
         return f"{self.grant_type} {self.capability.code} -> {self.membership}"
+
+
+class MembershipScopeAssignment(TenantModel):
+    """Operating-scope assignment for a membership.
+
+    Per spec §7.2A line 414, a membership may have ONE OR MORE scope
+    assignments. Each assignment scopes the membership to either a
+    Region, a Market, or a Location — exactly one of the three.
+
+    Why three nullable FKs + CHECK constraint instead of GenericForeignKey?
+      - Type-safe: Django ORM knows the target model; queries can join.
+      - Queryable without GFK overhead: filtering by `region__name` is
+        a normal lookup; with GFK it's two queries minimum.
+      - Self-documenting in admin and database introspection.
+      - Constraint enforces "exactly one" at the DB layer, so partial-write
+        bugs surface immediately rather than silently producing
+        inconsistent state.
+
+    "Within scope" semantics (evaluator step 8):
+      - A REGION assignment includes that region's Markets and Locations.
+      - A MARKET assignment includes that market's Locations only.
+      - A LOCATION assignment is leaf-level — only that one location.
+      - A membership with multiple assignments has scope = union of all.
+    """
+
+    # `organization`, `created_at`, `updated_at` come from TenantModel.
+
+    membership = models.ForeignKey(
+        "organizations.Membership",
+        on_delete=models.CASCADE,
+        related_name="scope_assignments",
+    )
+
+    # Exactly one of these three is non-null per row, enforced by the
+    # CHECK constraint below. PROTECT on the targets prevents deleting
+    # a Region/Market/Location while it's still scoping someone — admin
+    # has to remove the assignment first (a deliberate friction point;
+    # accidental scope-deletion would silently broaden access).
+    region = models.ForeignKey(
+        "locations.Region",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="scope_assignments",
+    )
+    market = models.ForeignKey(
+        "locations.Market",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="scope_assignments",
+    )
+    location = models.ForeignKey(
+        "locations.Location",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="scope_assignments",
+    )
+
+    # Free-form rationale, mirrored from MembershipCapabilityGrant. Useful
+    # in audit and admin — "why was Alice given the Eastern Region?"
+    reason = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = _("membership scope assignment")
+        verbose_name_plural = _("membership scope assignments")
+        ordering = ["-created_at"]
+        constraints = [
+            # Exactly one of region/market/location must be non-null. We use
+            # a Q-expression rather than raw SQL so it portable across DBs.
+            # `condition=` is the Django 5.1+ name; the old `check=` is
+            # still supported but deprecated.
+            models.CheckConstraint(
+                condition=(
+                    (
+                        models.Q(region__isnull=False)
+                        & models.Q(market__isnull=True)
+                        & models.Q(location__isnull=True)
+                    )
+                    | (
+                        models.Q(region__isnull=True)
+                        & models.Q(market__isnull=False)
+                        & models.Q(location__isnull=True)
+                    )
+                    | (
+                        models.Q(region__isnull=True)
+                        & models.Q(market__isnull=True)
+                        & models.Q(location__isnull=False)
+                    )
+                ),
+                name="scope_assignment_exactly_one_target",
+            ),
+            # No duplicate assignments — same membership shouldn't have the
+            # same Region (or Market, or Location) assigned twice.
+            models.UniqueConstraint(
+                fields=["membership", "region"],
+                condition=models.Q(region__isnull=False),
+                name="scope_assignment_no_dup_region",
+            ),
+            models.UniqueConstraint(
+                fields=["membership", "market"],
+                condition=models.Q(market__isnull=False),
+                name="scope_assignment_no_dup_market",
+            ),
+            models.UniqueConstraint(
+                fields=["membership", "location"],
+                condition=models.Q(location__isnull=False),
+                name="scope_assignment_no_dup_location",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["membership"],
+                name="mbr_scope_membership_idx",
+            ),
+        ]
+
+    @property
+    def kind(self) -> str:
+        """Return 'region', 'market', or 'location' — whichever target is set."""
+        if self.region_id is not None:
+            return "region"
+        if self.market_id is not None:
+            return "market"
+        if self.location_id is not None:
+            return "location"
+        # Should be unreachable thanks to the CHECK constraint, but
+        # belt-and-braces.
+        return "unknown"
+
+    @property
+    def target(self):
+        """Return the single non-null target object."""
+        return self.region or self.market or self.location
+
+    def __str__(self) -> str:
+        return f"{self.membership} scoped to {self.kind}: {self.target}"

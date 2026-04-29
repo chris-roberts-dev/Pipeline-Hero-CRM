@@ -40,7 +40,7 @@ Performance:
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from django.http import HttpRequest
 
@@ -50,7 +50,6 @@ from apps.platform.rbac.models import (
     RoleCapability,
 )
 
-
 # Per-request cache key. We attach a dict to the request object directly
 # (not a thread-local) so cleanup is automatic at request end.
 _REQUEST_CACHE_ATTR = "_rbac_capability_cache"
@@ -59,9 +58,9 @@ _REQUEST_CACHE_ATTR = "_rbac_capability_cache"
 def has_capability(
     *,
     user: Any,
-    membership: Optional[Membership],
+    membership: Membership | None,
     capability_code: str,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> bool:
     """Decide whether `user` (acting via `membership`) holds `capability_code`.
 
@@ -144,9 +143,9 @@ def _compute_effective_capabilities(membership: Membership) -> frozenset[str]:
     # Join chain: MembershipRole(membership) → Role → RoleCapability → Capability
     # We pivot from RoleCapability so the queryset is a flat code list.
     role_caps: set[str] = set(
-        RoleCapability.objects
-        .filter(role__membership_assignments__membership=membership)
-        .values_list("capability__code", flat=True)
+        RoleCapability.objects.filter(
+            role__membership_assignments__membership=membership
+        ).values_list("capability__code", flat=True)
     )
 
     # Step 5: GRANT/DENY overrides on the membership directly.
@@ -154,8 +153,12 @@ def _compute_effective_capabilities(membership: Membership) -> frozenset[str]:
         membership=membership
     ).values_list("capability__code", "grant_type")
 
-    grant_codes = {code for code, gt in grants if gt == MembershipCapabilityGrant.GrantType.GRANT}
-    deny_codes = {code for code, gt in grants if gt == MembershipCapabilityGrant.GrantType.DENY}
+    grant_codes = {
+        code for code, gt in grants if gt == MembershipCapabilityGrant.GrantType.GRANT
+    }
+    deny_codes = {
+        code for code, gt in grants if gt == MembershipCapabilityGrant.GrantType.DENY
+    }
 
     # (roles ∪ grants) − denies. DENY precedence is the last set operation.
     effective = (role_caps | grant_codes) - deny_codes
@@ -170,10 +173,10 @@ def _compute_effective_capabilities(membership: Membership) -> frozenset[str]:
 def object_check(
     *,
     user: Any,
-    membership: Optional[Membership],
+    membership: Membership | None,
     capability_code: str,
     target: Any,
-    request: Optional[HttpRequest] = None,
+    request: HttpRequest | None = None,
 ) -> bool:
     """Capability check + object-level guards.
 
@@ -230,18 +233,99 @@ def object_check(
     return True
 
 
+# Set of system_key values that REQUIRE a matching scope assignment.
+# Per spec line 735: a scoped role without a scope assignment grants no
+# data access. Keep this in sync with the Role.SystemKey enum members
+# that represent geographically-scoped manager roles.
+_SCOPED_ROLE_KEYS = frozenset(
+    {
+        "REGIONAL_MANAGER",
+        "MARKET_MANAGER",
+        "LOCATION_MANAGER",
+    }
+)
+
+
 def _within_operating_scope(*, membership: Membership, target: Any) -> bool:
-    """Whether `target` falls within `membership`'s operating-scope assignment.
+    """Whether `target` falls within `membership`'s operating-scope assignments.
 
-    Stub for M2 step 3. Returns True unconditionally.
+    Implements spec §7.2A and the §10.2 step 8 algorithm:
 
-    M2 step 4 will replace this with:
-      1. If membership has no scope assignment → True (org-wide access)
-      2. If membership has scope assignment → check target's location/market/
-         region against the assignment with the appropriate widening
-         (Location ⊂ Market ⊂ Region) per spec §11
+      1. Resolve target's scope-location via `target.get_scope_location()`.
+         If the target has no such method or returns None, the target is
+         org-wide (e.g., a Role, a Catalog item) — step 8 doesn't apply.
+      2. If membership has any assigned role with a scoped system_key
+         (Regional/Market/Location Manager) but NO scope assignments at
+         all, deny — fail-closed safety net per spec line 735. Service
+         layer should prevent this state, but the evaluator catches it
+         too in case a state slips through.
+      3. If membership has no scope assignments AND no scoped roles, it
+         has org-wide access — pass.
+      4. Otherwise: target's location must fall within at least ONE of
+         the membership's scope assignments, with hierarchical widening:
+           - LOCATION assignment matches if target.location == assignment.location
+           - MARKET assignment matches if target's location is in assignment.market
+           - REGION assignment matches if target's location's market is in assignment.region
     """
-    return True
+    # Step 1: resolve the target's scope-location.
+    get_scope_loc = getattr(target, "get_scope_location", None)
+    if get_scope_loc is None:
+        # Target is not scope-aware → treat as org-wide. Skip step 8.
+        return True
+    target_location = get_scope_loc()
+    if target_location is None:
+        # Target is org-wide (Catalog, Role, etc.). Skip step 8.
+        return True
+
+    # Step 2 & 3: determine the membership's scope posture.
+    assignments = list(
+        membership.scope_assignments.select_related("region", "market", "location")
+    )
+    has_scoped_role = _membership_has_scoped_role(membership)
+
+    if not assignments:
+        if has_scoped_role:
+            # Defense-in-depth: scoped role with no scope assignment
+            # cannot access any data targets.
+            return False
+        # Unscoped membership (e.g., Owner, Sales Staff) — org-wide access.
+        return True
+
+    # Step 4: target location must match at least one assignment.
+    # We widen by walking up the target's hierarchy ONCE rather than
+    # querying per-assignment, so the cost is O(assignments) not O(N×M).
+    target_market = target_location.market
+    target_region_id = target_market.region_id
+
+    for assignment in assignments:
+        if assignment.location_id is not None:
+            if assignment.location_id == target_location.pk:
+                return True
+        elif assignment.market_id is not None:
+            if assignment.market_id == target_market.pk:
+                return True
+        elif assignment.region_id is not None:
+            if assignment.region_id == target_region_id:
+                return True
+
+    # No assignment matched.
+    return False
+
+
+def _membership_has_scoped_role(membership: Membership) -> bool:
+    """Whether the membership holds any role that requires a scope assignment.
+
+    Used by the fail-closed defense in _within_operating_scope. Avoids a
+    join through RoleCapability; we just look at the role's system_key.
+    """
+    # MembershipRole is in the rbac app; importing here keeps the evaluator
+    # free of model-import-cycle worries at module load.
+    from apps.platform.rbac.models import MembershipRole
+
+    return MembershipRole.objects.filter(
+        membership=membership,
+        role__system_key__in=_SCOPED_ROLE_KEYS,
+    ).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +333,7 @@ def _within_operating_scope(*, membership: Membership, target: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def get_acting_membership(*, user: Any, organization: Any) -> Optional[Membership]:
+def get_acting_membership(*, user: Any, organization: Any) -> Membership | None:
     """Resolve the membership a user is acting through in `organization`.
 
     Future impersonation support: this is where impersonation context
@@ -269,12 +353,8 @@ def get_acting_membership(*, user: Any, organization: Any) -> Optional[Membershi
     if organization is None:
         return None
 
-    return (
-        Membership.objects
-        .filter(
-            user=user,
-            organization=organization,
-            status=Membership.Status.ACTIVE,
-        )
-        .first()
-    )
+    return Membership.objects.filter(
+        user=user,
+        organization=organization,
+        status=Membership.Status.ACTIVE,
+    ).first()

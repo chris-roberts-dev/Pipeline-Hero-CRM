@@ -1,15 +1,17 @@
+import { leadsHandlers } from '@mocks/handlers/leads';
 import { http, HttpResponse } from 'msw';
 
 const API_BASE = '/api/internal';
 
 export const handlers = [
+  ...leadsHandlers,
   http.get(`${API_BASE}/session/`, () => {
     return HttpResponse.json({
       isAuthenticated: true,
       user: {
         id: 'user-001',
         email: 'owner@mypipelinehero.test',
-        fullName: 'Alex Morgan',
+        fullName: 'Chris Roberts',
         avatarUrl: null,
         isPlatformOwner: true,
         isSupportUser: false,

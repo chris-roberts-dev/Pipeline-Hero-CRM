@@ -48,9 +48,12 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # django.contrib.admin is added later once the custom AdminSite lands in M2.
-    # Keeping the default admin out of INSTALLED_APPS until then prevents
-    # accidental "just use the default admin" paths from sneaking in.
+    # django.contrib.admin gives us the admin templates, login view,
+    # session management, and the standard ModelAdmin classes. We use
+    # those building blocks but mount our own AdminSite (see
+    # apps.platform.console) rather than the default `admin.site` —
+    # spec §18.2 requires a custom AdminSite for grouping and ordering.
+    "django.contrib.admin",
 ]
 
 THIRD_PARTY_APPS = [
@@ -68,6 +71,8 @@ LOCAL_APPS = [
     "apps.platform.rbac",
     "apps.platform.audit",
     "apps.platform.support",
+    # Platform console (custom AdminSite + admin registrations)
+    "apps.platform.console",
     # Web surfaces
     "apps.web.landing",
     "apps.web.auth_portal",
@@ -116,6 +121,15 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.common.tenancy.middleware.TenancyMiddleware",
+    # ActingMembershipMiddleware needs both request.user (from
+    # AuthenticationMiddleware) and request.organization (from
+    # TenancyMiddleware) so it sits after both.
+    "apps.platform.rbac.middleware.ActingMembershipMiddleware",
+    # PermissionDeniedMiddleware translates domain PermissionDeniedError
+    # exceptions raised by views/services into HTTP 403 responses. Order
+    # is mostly irrelevant for process_exception middlewares, but placing
+    # it near the request stack keeps the rendering pipeline simple.
+    "apps.platform.rbac.middleware.PermissionDeniedMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -133,6 +147,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "apps.platform.support.context_processors.impersonation",
             ],
         },
     },
@@ -174,9 +189,13 @@ PASSWORD_HASHERS = [
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-     "OPTIONS": {"min_length": 12}},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 12},
+    },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
@@ -188,7 +207,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # so we can move the URL later without touching settings.
 LOGIN_URL = "landing:login"
 LOGIN_REDIRECT_URL = "landing:login"  # post-login routing is handled by the
-                                      # login view itself (see services).
+# login view itself (see services).
 
 # ---------------------------------------------------------------------------
 # Sessions
@@ -210,7 +229,7 @@ CSRF_COOKIE_SAMESITE = "Lax"
 # i18n / tz
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"           # Always store UTC; render per-user tz in templates
+TIME_ZONE = "UTC"  # Always store UTC; render per-user tz in templates
 USE_I18N = True
 USE_TZ = True
 
@@ -218,8 +237,8 @@ USE_TZ = True
 # Static / media
 # ---------------------------------------------------------------------------
 STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"      # collectstatic target
-STATICFILES_DIRS = [BASE_DIR / "static"]    # source dirs
+STATIC_ROOT = BASE_DIR / "staticfiles"  # collectstatic target
+STATICFILES_DIRS = [BASE_DIR / "static"]  # source dirs
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -252,11 +271,11 @@ CACHES = {
 
 CELERY_BROKER_URL = f"{REDIS_URL}/1"
 CELERY_RESULT_BACKEND = f"{REDIS_URL}/2"
-CELERY_TASK_ACKS_LATE = True                # Requeue if worker dies mid-task
+CELERY_TASK_ACKS_LATE = True  # Requeue if worker dies mid-task
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1       # Fair dispatch; matters for slow tasks
-CELERY_TASK_TIME_LIMIT = 600                # Hard 10-min ceiling
-CELERY_TASK_SOFT_TIME_LIMIT = 540           # Soft 9-min so tasks can clean up
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Fair dispatch; matters for slow tasks
+CELERY_TASK_TIME_LIMIT = 600  # Hard 10-min ceiling
+CELERY_TASK_SOFT_TIME_LIMIT = 540  # Soft 9-min so tasks can clean up
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 HANDOFF_TOKEN_REDIS_URL = f"{REDIS_URL}/3"
@@ -269,7 +288,9 @@ EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND",
     default="django.core.mail.backends.smtp.EmailBackend",
 )
-DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@mypipelinehero.localhost")
+DEFAULT_FROM_EMAIL = env(
+    "DJANGO_DEFAULT_FROM_EMAIL", default="noreply@mypipelinehero.localhost"
+)
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
 # ---------------------------------------------------------------------------
@@ -300,7 +321,7 @@ LOGGING = {
         "level": env("DJANGO_LOG_LEVEL", default="INFO"),
     },
     "loggers": {
-        "django.db.backends": {      # SQL queries — off by default, dev flips on
+        "django.db.backends": {  # SQL queries — off by default, dev flips on
             "level": "WARNING",
             "propagate": True,
         },
@@ -316,3 +337,14 @@ HANDOFF_TOKEN_TTL_SECONDS = 60
 # Org slug cache TTL. Short enough that a slug/status change propagates fast
 # even before explicit invalidation; long enough to cut request-path DB hits.
 ORG_SLUG_CACHE_TTL_SECONDS = 300
+
+# Impersonation session lifetime. Spec §7.4 doesn't mandate a hard cap, but
+# operational best practice is to time-box. 30 minutes balances "long enough
+# to actually debug an issue" with "short enough to limit blast radius if a
+# session is forgotten or hijacked." Override per-environment as needed.
+IMPERSONATION_TTL_MINUTES = 30
+
+# Django session key under which we store the active impersonation session_id
+# during a tenant-portal impersonation. Centralized here so middleware,
+# services, and tests reference the same key.
+IMPERSONATION_SESSION_KEY = "impersonation_session_id"

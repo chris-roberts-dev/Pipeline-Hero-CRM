@@ -1,5 +1,5 @@
+import { SessionProvider } from '@features/session/SessionProvider';
 import { Outlet } from 'react-router-dom';
-import { SessionProvider } from '../../features/session/SessionProvider';
 import { SidebarNav } from './SideBarNav/SidebarNav';
 import { Topbar } from './TopBarNav/Topbar';
 
