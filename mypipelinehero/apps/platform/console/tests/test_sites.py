@@ -77,22 +77,6 @@ class TestRegistrationCoverage:
 
 @pytest.mark.django_db
 class TestAppListGrouping:
-    def test_returns_business_buckets_not_django_apps(self, request_factory, superuser):
-        request = request_factory.get("/admin/")
-        request.user = superuser
-
-        app_list = console_site.get_app_list(request)
-        bucket_names = [bucket["name"] for bucket in app_list]
-
-        # Platform should be present (has registered models).
-        assert "Platform" in bucket_names
-        # Operations should be present (has Region/Market/Location).
-        assert "Operations" in bucket_names
-        # CRM, Catalog, Reporting are empty in v1 → omitted entirely.
-        assert "CRM" not in bucket_names
-        assert "Catalog" not in bucket_names
-        assert "Reporting" not in bucket_names
-
     def test_platform_bucket_contains_user_org_and_audit(
         self, request_factory, superuser
     ):

@@ -75,7 +75,20 @@ class PlatformAdminSite(AdminSite):
             # bucket header will appear empty until models register.
         ],
         "Catalog": [
-            # Empty until M3+.
+            # M3 step 1
+            "catalog_services.servicecategory",
+            "catalog_services.service",
+            "catalog_products.product",
+            # M3 step 2
+            "catalog_materials.rawmaterial",
+            "catalog_suppliers.supplier",
+            "catalog_suppliers.supplierproduct",
+            # M3 step 3
+            "catalog_manufacturing.bom",
+            "catalog_manufacturing.bomline",
+            # M3 step 4a
+            "catalog_pricing.pricingrule",
+            "catalog_pricing.pricingsnapshot",
         ],
         "Operations": [
             "locations.region",

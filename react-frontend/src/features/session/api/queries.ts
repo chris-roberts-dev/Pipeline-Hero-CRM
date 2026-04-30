@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../../lib/api/client';
 import {
-    sessionBootstrapSchema,
-    type SessionBootstrap,
+  sessionBootstrapSchema,
+  type SessionBootstrap,
 } from '../schema';
 
 export function useSessionQuery() {

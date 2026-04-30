@@ -31,6 +31,12 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
+from apps.catalog.manufacturing.models import BOM, BOMLine
+from apps.catalog.materials.models import RawMaterial
+from apps.catalog.pricing.models import PricingRule, PricingSnapshot
+from apps.catalog.products.models import Product
+from apps.catalog.services.models import Service, ServiceCategory
+from apps.catalog.suppliers.models import Supplier, SupplierProduct
 from apps.operations.locations.models import Location, Market, Region
 from apps.platform.accounts.models import User
 from apps.platform.audit.models import AuditEvent
@@ -487,3 +493,370 @@ class LocationAdmin(TenantScopedAdmin):
     @admin.display(description="Region")
     def region_label(self, obj: Location) -> str:
         return obj.market.region.name
+
+
+# ===========================================================================
+# Catalog: Services
+# ===========================================================================
+
+
+@admin.register(ServiceCategory, site=console_site)
+class ServiceCategoryAdmin(TenantScopedAdmin):
+    list_display = ("name", "code", "is_active", "organization", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("code", "name", "organization__name")
+    readonly_fields = ("created_at", "updated_at")
+    raw_id_fields = ("organization",)
+    ordering = ("organization__name", "name")
+
+
+@admin.register(Service, site=console_site)
+class ServiceAdmin(TenantScopedAdmin):
+    list_display = (
+        "name",
+        "code",
+        "category",
+        "catalog_price",
+        "is_active",
+        "organization",
+        "created_at",
+    )
+    list_filter = ("is_active",)
+    search_fields = ("code", "name", "description", "organization__name")
+    # IMPORTANT: must include "organization" explicitly. The parent
+    # TenantScopedAdmin sets list_select_related = ("organization",), but
+    # subclassing replaces rather than extends — see comment in patch header.
+    list_select_related = ("organization", "category")
+    raw_id_fields = ("organization", "category")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("organization__name", "name")
+
+
+# ===========================================================================
+# Catalog: Products
+# ===========================================================================
+
+
+@admin.register(Product, site=console_site)
+class ProductAdmin(TenantScopedAdmin):
+    list_display = (
+        "name",
+        "sku",
+        "product_type",
+        "is_active",
+        "organization",
+        "created_at",
+    )
+    list_filter = ("product_type", "is_active")
+    search_fields = ("sku", "name", "description", "organization__name")
+    raw_id_fields = ("organization",)
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("organization__name", "name")
+
+
+# ===========================================================================
+# Catalog: Materials
+# ===========================================================================
+
+
+@admin.register(RawMaterial, site=console_site)
+class RawMaterialAdmin(TenantScopedAdmin):
+    list_display = (
+        "name",
+        "sku",
+        "unit_of_measure",
+        "current_cost",
+        "is_active",
+        "organization",
+        "created_at",
+    )
+    list_filter = ("unit_of_measure", "is_active")
+    search_fields = ("sku", "name", "organization__name")
+    raw_id_fields = ("organization",)
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("organization__name", "name")
+
+
+# ===========================================================================
+# Catalog: Suppliers
+# ===========================================================================
+
+
+@admin.register(Supplier, site=console_site)
+class SupplierAdmin(TenantScopedAdmin):
+    list_display = (
+        "name",
+        "status",
+        "contact_name",
+        "email",
+        "phone",
+        "organization",
+        "created_at",
+    )
+    list_filter = ("status",)
+    search_fields = (
+        "name",
+        "contact_name",
+        "email",
+        "phone",
+        "organization__name",
+    )
+    raw_id_fields = ("organization",)
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("organization__name", "name")
+
+
+@admin.register(SupplierProduct, site=console_site)
+class SupplierProductAdmin(TenantScopedAdmin):
+    list_display = (
+        "supplier",
+        "target_label",
+        "supplier_sku",
+        "default_cost",
+        "lead_time_days",
+        "organization",
+    )
+    list_filter = ("supplier", "lead_time_days")
+    search_fields = (
+        "supplier__name",
+        "supplier_sku",
+        "product__name",
+        "product__sku",
+        "raw_material__name",
+        "raw_material__sku",
+        "organization__name",
+    )
+    # IMPORTANT: include "organization" explicitly. The parent
+    # TenantScopedAdmin sets list_select_related = ("organization",), but
+    # subclassing replaces rather than extends.
+    list_select_related = (
+        "organization",
+        "supplier",
+        "product",
+        "raw_material",
+    )
+    raw_id_fields = ("organization", "supplier", "product", "raw_material")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("organization__name", "supplier__name", "supplier_sku")
+
+    @admin.display(description="Target", ordering="product__name")
+    def target_label(self, obj: SupplierProduct) -> str:
+        """Polymorphic target label for the changelist.
+
+        Renders as "Product: Widget" or "Material: Steel Sheet" depending
+        on which side of the SupplierProduct's product/raw_material XOR
+        is populated. The CHECK constraint on the model guarantees exactly
+        one is non-null, so the fallback "—" should be unreachable in
+        valid data — but kept defensively in case of corrupted rows that
+        somehow bypass the CHECK.
+        """
+        if obj.product_id is not None:
+            return f"Product: {obj.product.name}"
+        if obj.raw_material_id is not None:
+            return f"Material: {obj.raw_material.name}"
+        return "—"
+
+
+# ===========================================================================
+# Catalog: Manufacturing
+# ===========================================================================
+
+
+class BOMLineInline(admin.TabularInline):
+    """Inline edit lines from the BOM detail page.
+
+    Lines are intrinsic to a BOM (CASCADE on bom.delete), so editing in
+    place is the natural UX rather than a separate top-level admin page
+    for individual lines. Top-level BOMLine admin (registered below) is
+    still useful for cross-BOM searches and audit lookups.
+    """
+
+    model = BOMLine
+    extra = 0
+    fields = (
+        "raw_material",
+        "quantity",
+        "unit_of_measure",
+        "cost_basis_quantity",
+        "cost_reference",
+    )
+    raw_id_fields = ("raw_material",)
+
+
+@admin.register(BOM, site=console_site)
+class BOMAdmin(TenantScopedAdmin):
+    list_display = (
+        "version",
+        "finished_product",
+        "status",
+        "effective_from",
+        "organization",
+        "created_at",
+    )
+    list_filter = ("status",)
+    search_fields = (
+        "version",
+        "finished_product__name",
+        "finished_product__sku",
+        "organization__name",
+    )
+    # IMPORTANT: include "organization" explicitly. TenantScopedAdmin sets
+    # list_select_related = ("organization",) on the parent, and subclassing
+    # replaces rather than extends.
+    list_select_related = ("organization", "finished_product")
+    raw_id_fields = ("organization", "finished_product")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("organization__name", "finished_product__name", "-effective_from")
+    inlines = [BOMLineInline]
+
+
+@admin.register(BOMLine, site=console_site)
+class BOMLineAdmin(TenantScopedAdmin):
+    """Top-level changelist for individual BOM lines.
+
+    Useful for cross-BOM queries — "what BOMs use this raw material" and
+    "what cost_reference values are stale" are both BOMLine-level questions
+    that the inline-on-BOM view can't answer cleanly. The inline above is
+    for editing in context; this changelist is for searching across BOMs.
+    """
+
+    list_display = (
+        "bom",
+        "raw_material",
+        "quantity",
+        "unit_of_measure",
+        "cost_basis_quantity",
+        "cost_reference",
+        "organization",
+    )
+    list_filter = ("unit_of_measure",)
+    search_fields = (
+        "bom__version",
+        "bom__finished_product__name",
+        "raw_material__name",
+        "raw_material__sku",
+        "organization__name",
+    )
+    list_select_related = (
+        "organization",
+        "bom",
+        "bom__finished_product",
+        "raw_material",
+    )
+    raw_id_fields = ("organization", "bom", "raw_material")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = (
+        "organization__name",
+        "bom__finished_product__name",
+        "raw_material__name",
+    )
+
+
+# ===========================================================================
+# Catalog: Pricing
+# ===========================================================================
+
+
+@admin.register(PricingRule, site=console_site)
+class PricingRuleAdmin(TenantScopedAdmin):
+    list_display = (
+        "rule_type",
+        "target_line_type",
+        "target_label",
+        "priority",
+        "is_active",
+        "organization",
+    )
+    list_filter = ("rule_type", "target_line_type", "is_active")
+    search_fields = (
+        "target_service__name",
+        "target_service__code",
+        "target_product__name",
+        "target_product__sku",
+        "organization__name",
+    )
+    # IMPORTANT: include "organization" explicitly. TenantScopedAdmin sets
+    # list_select_related = ("organization",) on the parent, and subclassing
+    # replaces rather than extends.
+    list_select_related = ("organization", "target_service", "target_product")
+    raw_id_fields = ("organization", "target_service", "target_product")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("organization__name", "target_line_type", "-priority")
+
+    @admin.display(description="Target")
+    def target_label(self, obj: PricingRule) -> str:
+        """Polymorphic target label for the changelist.
+
+        Renders one of:
+          - "Service: <name>"  if target_service is set
+          - "Product: <name>"  if target_product is set
+          - "(default)"        if neither is set (line-type-default rule)
+        """
+        if obj.target_service_id is not None:
+            return f"Service: {obj.target_service.name}"
+        if obj.target_product_id is not None:
+            return f"Product: {obj.target_product.name}"
+        return "(default)"
+
+
+@admin.register(PricingSnapshot, site=console_site)
+class PricingSnapshotAdmin(TenantScopedAdmin):
+    """Read-only admin for pricing snapshots.
+
+    Spec §13.3: "PricingSnapshot records are written once and never
+    updated." Add/change/delete are forbidden at the admin layer to
+    prevent accidental edits to historical pricing records. The
+    `is_active` flag flip on supersession happens at the service layer
+    (M3 step 4b), not via the admin.
+
+    Read-only enforcement uses the same pattern as M2's AuditEventAdmin —
+    overriding has_*_permission() returns False unconditionally.
+    """
+
+    list_display = (
+        "quote_line_id",
+        "line_type",
+        "unit_price_final",
+        "is_active",
+        "engine_version",
+        "organization",
+        "created_at",
+    )
+    list_filter = ("line_type", "is_active", "engine_version", "override_applied")
+    search_fields = (
+        "quote_line_id",
+        "organization__name",
+    )
+    list_select_related = ("organization",)
+    readonly_fields = (
+        "organization",
+        "quote_line_id",
+        "line_type",
+        "base_cost",
+        "markup_amount",
+        "discount_amount",
+        "unit_price_final",
+        "override_applied",
+        "override_unit_price",
+        "override_reason",
+        "inputs",
+        "breakdown",
+        "is_active",
+        "engine_version",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-created_at",)
+
+    def has_add_permission(self, request) -> bool:
+        # Snapshots are written by the pricing engine, not by humans.
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        # Snapshots are immutable per spec §13.3.
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        # Snapshots are retained forever — superseded ones flip is_active=False
+        # but are never deleted.
+        return False
